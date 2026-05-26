@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where pnpm *)",
+      "Bash(where node *)",
+      "Bash(where docker *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(where npm *)",
+      "Bash(where npx *)",
+      "PowerShell(docker compose version *)"
+    ]
+  }
+}

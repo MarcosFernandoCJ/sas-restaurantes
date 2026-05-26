@@ -1,0 +1,81 @@
+# =============================================================================
+# SAS Restaurantes — .gitignore
+# =============================================================================
+
+# ── Dependencias ─────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── Builds y artefactos ───────────────────────────────────────────────────────
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# ── Variables de entorno (NUNCA commitear) ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+apps/**/.env
+apps/**/.env.local
+apps/**/.env.*.local
+packages/**/.env
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ── Testing y cobertura ───────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ── Prisma ────────────────────────────────────────────────────────────────────
+# Las migraciones SÍ se commitean; solo ignorar la carpeta de dev
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
+
+# ── Cache de herramientas ─────────────────────────────────────────────────────
+.turbo/
+.eslintcache
+.cache/
+.parcel-cache/
+
+# ── IDEs y editores ───────────────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Sistema operativo ─────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Los docker-compose SÍ se commitean
+*.env.docker
+
+# ── Certificados y secretos ───────────────────────────────────────────────────
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+
+# ── pnpm-lock.yaml se commitea para reproducibilidad ─────────────────────────

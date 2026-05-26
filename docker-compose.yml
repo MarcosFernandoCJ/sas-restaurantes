@@ -1,0 +1,114 @@
+# =============================================================================
+# docker-compose.yml — Producción / Demo
+# Uso: docker compose up --build
+# Al arrancar: aplica schema Prisma + seed → inicia API
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Nginx — Reverse proxy (puerto 80)
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - '80:80'
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - sas-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend — React + Vite (build estático servido por nginx)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    ports:
+      - '3000:3000'
+    networks:
+      - sas-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # API — Fastify + Prisma
+  # El entrypoint aplica el schema (db push) y el seed antes de iniciar
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    ports:
+      - '3001:3001'
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=postgresql://sas:sas_password@db:5432/sas_restaurante
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-change_this_in_production}
+      - CORS_ORIGIN=http://localhost:3000
+      - SEED_DB=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - sas-network
+    restart: on-failure
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sas
+      POSTGRES_PASSWORD: sas_password
+      POSTGRES_DB: sas_restaurante
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sas -d sas_restaurante']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sas-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis 7
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sas-network
+    restart: unless-stopped
+
+# -----------------------------------------------------------------------------
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  sas-network:
+    driver: bridge

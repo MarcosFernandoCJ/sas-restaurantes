@@ -1,0 +1,26 @@
+# Excluir node_modules del host — Docker instala los propios durante el build
+**/node_modules
+**/.pnpm-store
+**/.turbo
+
+# Excluir archivos de build locales
+**/dist
+**/build
+**/.vite
+
+# Archivos de test y desarrollo
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+
+# Git y editor
+.git
+.gitignore
+**/.DS_Store
+**/*.local
+
+# Archivos de docs (no se necesitan en el contenedor)
+docs/
+
+# Scripts de CI
+.github/

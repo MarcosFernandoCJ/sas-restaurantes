@@ -1,0 +1,376 @@
+// =============================================================================
+// SAS Restaurantes — Prisma Schema
+// PostgreSQL 16 · Todos los IDs como UUID · Enums coinciden exactamente con BD
+// Nunca cambiar los valores de enum en producción (ver CLAUDE.md)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS — Valores exactos que viven en la BD. NUNCA renombrar en producción.
+// =============================================================================
+
+enum UserRole {
+  admin
+  waiter
+  chef
+}
+
+enum TableStatus {
+  free
+  occupied
+  reserved
+}
+
+enum WaiterMode {
+  free
+  assigned
+}
+
+enum OrderType {
+  dine_in
+  delivery
+}
+
+enum OrderStatus {
+  pending
+  in_prep
+  ready
+  delivered
+  cancelled
+}
+
+enum ItemStatus {
+  pending
+  in_prep
+  ready
+  served
+}
+
+enum InvoiceStatus {
+  pending
+  paid
+  voided
+}
+
+enum PaymentMethod {
+  cash
+  card
+  yape
+  plin
+  other
+}
+
+enum IngredientStatus {
+  ok
+  low
+  critical
+  out
+}
+
+enum CategoryType {
+  food
+  drink
+  other
+}
+
+// =============================================================================
+// MODELS
+// =============================================================================
+
+// --- Usuarios del sistema ---
+model User {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(150)
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  waiterSessions    WaiterSession[]
+  orders            Order[]        @relation("WaiterOrders")
+  claimedOrderItems OrderItem[]    @relation("ChefAssigned")
+  purchases         Purchase[]     @relation("PurchaseRegistrar")
+  confirmedMenus    DailyMenu[]    @relation("MenuConfirmer")
+  notifications     Notification[] @relation("NotificationTarget")
+
+  @@map("users")
+}
+
+// --- Mesas del restaurante ---
+model Table {
+  id       String      @id @default(uuid())
+  number   Int         @unique
+  capacity Int
+  status   TableStatus @default(free)
+  section  String?     @db.VarChar(50)
+
+  waiterSessionTables WaiterSessionTable[]
+  orders              Order[]
+
+  @@map("tables")
+}
+
+// --- Sesión de turno del mesero ---
+model WaiterSession {
+  id        String     @id @default(uuid())
+  waiterId  String     @map("waiter_id")
+  mode      WaiterMode
+  startedAt DateTime   @default(now()) @map("started_at")
+  endedAt   DateTime?  @map("ended_at")
+
+  waiter User                 @relation(fields: [waiterId], references: [id])
+  tables WaiterSessionTable[]
+
+  @@map("waiter_sessions")
+}
+
+// --- Mesas asignadas a una sesión (relación N:M) ---
+model WaiterSessionTable {
+  sessionId  String   @map("session_id")
+  tableId    String   @map("table_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  session WaiterSession @relation(fields: [sessionId], references: [id])
+  table   Table         @relation(fields: [tableId], references: [id])
+
+  @@id([sessionId, tableId])
+  @@map("waiter_session_tables")
+}
+
+// --- Categorías del menú ---
+model MenuCategory {
+  id        String       @id @default(uuid())
+  name      String       @db.VarChar(80)
+  type      CategoryType
+  sortOrder Int          @default(0) @map("sort_order")
+  isActive  Boolean      @default(true) @map("is_active")
+
+  items MenuItem[]
+
+  @@map("menu_categories")
+}
+
+// --- Platos y bebidas del menú ---
+model MenuItem {
+  id              String   @id @default(uuid())
+  categoryId      String   @map("category_id")
+  name            String   @db.VarChar(120)
+  description     String?
+  basePrice       Decimal  @db.Decimal(10, 2) @map("base_price")
+  prepTimeMinutes Int      @default(10) @map("prep_time_minutes")
+  imageUrl        String?  @map("image_url")
+  isAvailable     Boolean  @default(true) @map("is_available")
+  isFeatured      Boolean  @default(false) @map("is_featured")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  category   MenuCategory @relation(fields: [categoryId], references: [id])
+  recipes    Recipe[]
+  orderItems OrderItem[]
+  dailyMenus DailyMenu[]
+
+  @@map("menu_items")
+}
+
+// --- Insumos / Inventario ---
+model Ingredient {
+  id          String           @id @default(uuid())
+  name        String           @db.VarChar(120)
+  unit        String           @db.VarChar(30)
+  stockQty    Decimal          @default(0) @db.Decimal(10, 3) @map("stock_qty")
+  minStockQty Decimal          @default(0) @db.Decimal(10, 3) @map("min_stock_qty")
+  unitCost    Decimal          @default(0) @db.Decimal(10, 4) @map("unit_cost")
+  supplierId  String?          @map("supplier_id")
+  status      IngredientStatus @default(ok)
+  isActive    Boolean          @default(true) @map("is_active")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  recipes       Recipe[]
+  purchaseItems PurchaseItem[]
+
+  @@map("ingredients")
+}
+
+// --- Recetas: qué insumos usa cada ítem del menú ---
+model Recipe {
+  id             String  @id @default(uuid())
+  menuItemId     String  @map("menu_item_id")
+  ingredientId   String  @map("ingredient_id")
+  quantityNeeded Decimal @db.Decimal(10, 4) @map("quantity_needed")
+  notes          String?
+
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([menuItemId, ingredientId])
+  @@map("recipes")
+}
+
+// --- Menú del día confirmado por el admin ---
+model DailyMenu {
+  id            String    @id @default(uuid())
+  date          DateTime  @db.Date
+  menuItemId    String    @map("menu_item_id")
+  overridePrice Decimal?  @db.Decimal(10, 2) @map("override_price")
+  confirmedById String?   @map("confirmed_by")
+  confirmedAt   DateTime? @map("confirmed_at")
+
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id])
+  confirmedByUser User?    @relation("MenuConfirmer", fields: [confirmedById], references: [id])
+
+  @@unique([date, menuItemId])
+  @@map("daily_menus")
+}
+
+// --- Pedidos ---
+// Regla crítica: un pedido solo entra a cocina después de invoice.status = 'paid'
+// Los adicionales tienen is_additional = true y parent_order_id apuntando al original
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   Int         @default(autoincrement()) @map("order_number")
+  tableId       String?     @map("table_id")
+  waiterId      String      @map("waiter_id")
+  type          OrderType   @default(dine_in)
+  status        OrderStatus @default(pending)
+  notes         String?
+  isAdditional  Boolean     @default(false) @map("is_additional")
+  parentOrderId String?     @map("parent_order_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  table       Table?    @relation(fields: [tableId], references: [id])
+  waiter      User      @relation("WaiterOrders", fields: [waiterId], references: [id])
+  parentOrder Order?    @relation("AdditionalOrders", fields: [parentOrderId], references: [id])
+  additionals Order[]   @relation("AdditionalOrders")
+  items       OrderItem[]
+  invoice     Invoice?
+
+  @@map("orders")
+}
+
+// --- Ítems de cada pedido ---
+// Cuando todos los ítems tienen status = 'served', el Order.status → 'delivered'
+model OrderItem {
+  id             String     @id @default(uuid())
+  orderId        String     @map("order_id")
+  menuItemId     String     @map("menu_item_id")
+  quantity       Int
+  unitPrice      Decimal    @db.Decimal(10, 2) @map("unit_price")
+  notes          String?
+  status         ItemStatus @default(pending)
+  assignedChefId String?    @map("assigned_chef_id")
+  prepStartedAt  DateTime?  @map("prep_started_at")
+  prepFinishedAt DateTime?  @map("prep_finished_at")
+
+  order        Order    @relation(fields: [orderId], references: [id])
+  menuItem     MenuItem @relation(fields: [menuItemId], references: [id])
+  assignedChef User?    @relation("ChefAssigned", fields: [assignedChefId], references: [id])
+
+  @@map("order_items")
+}
+
+// --- Facturas / Boletas ---
+// NUNCA modificar una invoice con status = 'paid' (regla crítica)
+// Una sola factura por pedido (orderId es unique)
+model Invoice {
+  id               String        @id @default(uuid())
+  orderId          String        @unique @map("order_id")
+  invoiceNumber    String        @unique @db.VarChar(30) @map("invoice_number")
+  subtotal         Decimal       @db.Decimal(10, 2)
+  tax              Decimal       @default(0) @db.Decimal(10, 2)
+  total            Decimal       @db.Decimal(10, 2)
+  status           InvoiceStatus @default(pending)
+  paymentMethod    PaymentMethod @default(cash) @map("payment_method")
+  paidAt           DateTime?     @map("paid_at")
+  paymentReference String?       @map("payment_reference") // culqi_charge_id o stripe_payment_intent_id
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("invoices")
+}
+
+// --- Proveedores de insumos ---
+model Supplier {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(120)
+  contactName String? @db.VarChar(100) @map("contact_name")
+  phone       String? @db.VarChar(20)
+  email       String? @db.VarChar(150)
+  address     String?
+  notes       String?
+
+  ingredients Ingredient[]
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+// --- Compras de insumos ---
+model Purchase {
+  id              String   @id @default(uuid())
+  supplierId      String?  @map("supplier_id")
+  registeredById  String   @map("registered_by")
+  purchasedAt     DateTime @default(now()) @map("purchased_at")
+  totalCost       Decimal  @db.Decimal(10, 2) @map("total_cost")
+  receiptImageUrl String?  @map("receipt_image_url")
+
+  supplier         Supplier?      @relation(fields: [supplierId], references: [id])
+  registeredByUser User           @relation("PurchaseRegistrar", fields: [registeredById], references: [id])
+  items            PurchaseItem[]
+
+  @@map("purchases")
+}
+
+// --- Detalle de compra ---
+model PurchaseItem {
+  id           String  @id @default(uuid())
+  purchaseId   String  @map("purchase_id")
+  ingredientId String  @map("ingredient_id")
+  quantity     Decimal @db.Decimal(10, 3)
+  unitCost     Decimal @db.Decimal(10, 4) @map("unit_cost")
+  subtotal     Decimal @db.Decimal(10, 2)
+
+  purchase   Purchase   @relation(fields: [purchaseId], references: [id])
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@map("purchase_items")
+}
+
+// --- Notificaciones del sistema ---
+model Notification {
+  id           String   @id @default(uuid())
+  type         String   @db.VarChar(50)
+  targetRole   UserRole @map("target_role")
+  targetUserId String?  @map("target_user_id")
+  payload      Json
+  isRead       Boolean  @default(false) @map("is_read")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  targetUser User? @relation("NotificationTarget", fields: [targetUserId], references: [id])
+
+  @@map("notifications")
+}
+
+// --- Eventos del calendario (días festivos, eventos especiales) ---
+model CalendarEvent {
+  id                     String   @id @default(uuid())
+  name                   String   @db.VarChar(120)
+  eventDate              DateTime @db.Date @map("event_date")
+  expectedExtraCustomers Int?     @map("expected_extra_customers")
+  notes                  String?
+  isHoliday              Boolean  @default(false) @map("is_holiday")
+
+  @@map("calendar_events")
+}

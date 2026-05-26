@@ -1,0 +1,33 @@
+{
+  "name": "@sas/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview --port 3000 --host",
+    "lint": "eslint src --ext .tsx,.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sas/ui": "workspace:*",
+    "@types/recharts": "^2.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.15.1",
+    "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.3",
+    "zustand": "^5.0.13"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.3",
+    "vitest": "^1.6.0"
+  }
+}

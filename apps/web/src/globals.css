@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Paleta "Brasas & Carbón" — Variables CSS canónicas
+   Fuente de verdad: packages/ui/src/tokens.ts > cssVariables
+   ========================================================================== */
+
+:root {
+  /* Colores principales */
+  --color-primary:   #1B2B3A;
+  --color-secondary: #C8410A;
+  --color-accent:    #E8A838;
+  --color-bg:        #FAFAF8;
+  --color-surface:   #F0EDE8;
+  --color-text:      #1C1C1C;
+  --color-muted:     #8C9BAA;
+  --color-border:    #D4CFC9;
+
+  /* Estados semánticos de pedido */
+  --color-pending:    #B0C4D8;
+  --color-in-prep:    #2563A8;
+  --color-ready:      #1A6B3C;
+  --color-additional: #A05A2C;
+  --color-delivery:   #C8410A;
+  --color-warning:    #D4860A;
+  --color-danger:     #B02020;
+
+  /* Tipografía */
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body:    "DM Sans", system-ui, sans-serif;
+  --font-mono:    "DM Mono", monospace;
+}
+
+/* Dark mode — Interfaz Cocina */
+[data-theme="dark"] {
+  --color-bg:      #0F1A24;
+  --color-surface: #162230;
+  --color-text:    #B0C4D8;
+  --color-border:  #1E2F3F;
+}
+
+/* ==========================================================================
+   Base styles
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
