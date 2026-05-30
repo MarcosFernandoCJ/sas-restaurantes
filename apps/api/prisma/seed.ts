@@ -158,63 +158,82 @@ async function main() {
     },
   })
 
-  const arrozLeche = await prisma.menuItem.create({
+  // TODO: tipar dispatchArea con DispatchArea enum post-migración
+  // Postre pre-elaborado: el mesero lo sirve directamente sin pasar por cocina
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arrozLeche = await (prisma.menuItem as any).create({
     data: {
       categoryId: catPlatos.id,
       name: 'Arroz con Leche',
       description: 'Postre cremoso tradicional peruano con canela',
       basePrice: 8.0,
-      prepTimeMinutes: 5,
+      prepTimeMinutes: 2,
+      requiresPreparation: false,
+      dispatchArea: 'waiter',
     },
   })
 
-  const incaKola = await prisma.menuItem.create({
+  // Bebidas directas — el mesero las sirve sin pasar por el bar
+  // TODO: tipar dispatchArea con DispatchArea enum una vez que Prisma regenere
+  const prismaAny = prisma as unknown as { menuItem: typeof prisma.menuItem }
+
+  const incaKola = await prismaAny.menuItem.create({
     data: {
       categoryId: catBebidas.id,
       name: 'Inca Kola',
       description: 'Gaseosa nacional 500ml',
       basePrice: 5.0,
       prepTimeMinutes: 2,
+      requiresPreparation: false,
+      dispatchArea: 'waiter',
     },
   })
 
-  const chicha = await prisma.menuItem.create({
+  const chicha = await prismaAny.menuItem.create({
     data: {
       categoryId: catBebidas.id,
       name: 'Chicha Morada',
       description: 'Bebida tradicional de maíz morado con frutas y canela',
       basePrice: 6.0,
-      prepTimeMinutes: 2,
+      prepTimeMinutes: 5,
+      requiresPreparation: true,
+      dispatchArea: 'bar',
     },
   })
 
-  await prisma.menuItem.create({
+  await prismaAny.menuItem.create({
     data: {
       categoryId: catBebidas.id,
       name: 'Agua Mineral',
       description: 'Agua mineral sin gas 500ml',
       basePrice: 3.0,
       prepTimeMinutes: 1,
+      requiresPreparation: false,
+      dispatchArea: 'waiter',
     },
   })
 
-  await prisma.menuItem.create({
+  await prismaAny.menuItem.create({
     data: {
       categoryId: catBebidas.id,
       name: 'Cerveza Nacional',
       description: 'Cerveza de barril 620ml bien fría',
       basePrice: 9.0,
       prepTimeMinutes: 2,
+      requiresPreparation: false,
+      dispatchArea: 'waiter',
     },
   })
 
-  const maracuya = await prisma.menuItem.create({
+  const maracuya = await prismaAny.menuItem.create({
     data: {
       categoryId: catBebidas.id,
       name: 'Jugo de Maracuyá',
       description: 'Jugo fresco natural de maracuyá con azúcar',
       basePrice: 7.0,
-      prepTimeMinutes: 5,
+      prepTimeMinutes: 6,
+      requiresPreparation: true,
+      dispatchArea: 'bar',
     },
   })
 

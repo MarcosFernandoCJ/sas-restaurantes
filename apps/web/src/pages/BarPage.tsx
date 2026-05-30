@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { KitchenCard } from '@/features/kitchen/components/KitchenCard'
-import { useKitchenSocket } from '@/features/kitchen/hooks/useKitchenSocket'
-import { useWakeLock } from '@/features/kitchen/hooks/useWakeLock'
-import { useKitchenStore } from '@/features/kitchen/store/kitchen.store'
-import type { KitchenOrder } from '@/features/kitchen/types'
+import { BarCard } from '@/features/bar/components/BarCard'
+import { useBarSocket } from '@/features/bar/hooks/useBarSocket'
+import { useBarStore } from '@/features/bar/store/bar.store'
+import type { BarOrder } from '@/features/bar/types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
@@ -29,24 +28,19 @@ function ClosedScreen() {
           Jornada no iniciada
         </h1>
         <p className="text-[#8C9BAA] font-body text-base max-w-sm mx-auto leading-relaxed">
-          La cocina estará disponible cuando el administrador inicie operaciones.
+          El bar estará disponible cuando el administrador inicie operaciones.
         </p>
       </div>
-      <span className="flex items-center gap-2 text-sm text-[#8C9BAA] bg-[#1E2F3F] px-4 py-2 rounded-lg">
-        <span className="w-2 h-2 rounded-full bg-[#8C9BAA]/50" />
-        Esperando apertura de jornada
-      </span>
     </div>
   )
 }
 
-// ─── Shift indicator ──────────────────────────────────────────────────────────
+// ─── Shift bar ────────────────────────────────────────────────────────────────
 
 function ShiftBar({ startedAt }: { startedAt: string | null }) {
   const label = startedAt
     ? new Date(startedAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
     : null
-
   return (
     <span className="flex items-center gap-2 text-sm text-[#1A6B3C] bg-[#1A6B3C]/10 px-3 py-1.5 rounded-lg border border-[#1A6B3C]/30">
       <span className="w-2 h-2 rounded-full bg-[#1A6B3C] animate-pulse" />
@@ -57,15 +51,15 @@ function ShiftBar({ startedAt }: { startedAt: string | null }) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function hasActiveItems(order: KitchenOrder): boolean {
+function hasActiveItems(order: BarOrder): boolean {
   return order.items.some((i) => i.status === 'pending' || i.status === 'in_prep')
 }
 
-function allItemsReady(order: KitchenOrder): boolean {
+function allItemsReady(order: BarOrder): boolean {
   return order.items.length > 0 && order.items.every((i) => i.status === 'ready' || i.status === 'served')
 }
 
-function sortOrders(orders: KitchenOrder[]): KitchenOrder[] {
+function sortOrders(orders: BarOrder[]): BarOrder[] {
   return [...orders].sort((a, b) => {
     if (a.isAdditional !== b.isAdditional) return a.isAdditional ? 1 : -1
     return a.createdAt.getTime() - b.createdAt.getTime()
@@ -74,13 +68,10 @@ function sortOrders(orders: KitchenOrder[]): KitchenOrder[] {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export function KitchenPage() {
-  useWakeLock()
+export function BarPage() {
+  const { claimItemAction, markItemReadyAction } = useBarSocket()
+  const { orders, removingOrderIds, clearItemUpdated, setJourney, journey } = useBarStore()
 
-  const { claimItemAction, markItemReadyAction } = useKitchenSocket()
-  const { orders, removingOrderIds, clearItemUpdated, setJourney, journey } = useKitchenStore()
-
-  // journeyLoading: true until the first HTTP fetch resolves (prevents flash of ClosedScreen)
   const [journeyLoading, setJourneyLoading] = useState(true)
 
   useEffect(() => {
@@ -99,11 +90,10 @@ export function KitchenPage() {
       .finally(() => setJourneyLoading(false))
   }, [setJourney])
 
-  // Handlers must be defined before conditional returns (Rules of Hooks)
   const handleClaimItem = useCallback(
     (itemId: string) => {
       claimItemAction(itemId)
-      const { claimItem, orders: current } = useKitchenStore.getState()
+      const { claimItem, orders: current } = useBarStore.getState()
       for (const order of current) {
         if (order.items.some((i) => i.id === itemId)) {
           claimItem(order.id, itemId, null)
@@ -117,7 +107,7 @@ export function KitchenPage() {
   const handleMarkItemReady = useCallback(
     (itemId: string) => {
       markItemReadyAction(itemId)
-      const { markItemReady, orders: current } = useKitchenStore.getState()
+      const { markItemReady, orders: current } = useBarStore.getState()
       for (const order of current) {
         if (order.items.some((i) => i.id === itemId)) {
           markItemReady(order.id, itemId)
@@ -128,52 +118,43 @@ export function KitchenPage() {
     [markItemReadyAction]
   )
 
-  // Gate: block kitchen UI until journey is confirmed open
   if (journeyLoading) return <LoadingScreen />
   if (!journey.isOpen) return <ClosedScreen />
 
-  // Split orders into zones
   const activeOrders = sortOrders(orders.filter(hasActiveItems))
   const readyOrders = sortOrders(orders.filter(allItemsReady))
   const totalActive = activeOrders.length + readyOrders.length
 
   return (
     <div data-theme="dark" className="min-h-screen bg-[#0F1A24] py-6 px-4">
-      {/* Top bar */}
       <header className="flex items-center justify-between mb-6 max-w-[1600px] mx-auto gap-4 flex-wrap">
         <div className="flex items-center gap-4">
-          <h1 className="font-display text-2xl font-bold text-[#B0C4D8]">Cocina SAS</h1>
+          <h1 className="font-display text-2xl font-bold text-[#B0C4D8]">Bar SAS</h1>
           <div className="flex items-center gap-2">
             <span className="text-sm text-[#8C9BAA] font-mono">
               {totalActive} {totalActive === 1 ? 'pedido' : 'pedidos'}
             </span>
-            <span
-              className="w-2.5 h-2.5 rounded-full bg-[#1A6B3C] animate-pulse"
-              aria-label="Conexión activa"
-              role="status"
-            />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#1A6B3C] animate-pulse" />
           </div>
         </div>
         <ShiftBar startedAt={journey.startedAt} />
       </header>
 
-      {/* ── Zone 1 + 2 ──────────────────────────────────────────────────────── */}
       {activeOrders.length === 0 && readyOrders.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center gap-4"
           style={{ minHeight: 'calc(100vh - 120px)' }}
         >
-          <span className="text-7xl select-none" aria-hidden="true">🍳</span>
-          <p className="text-[#8C9BAA] text-xl font-body">Sin pedidos en cola</p>
+          <span className="text-7xl select-none" aria-hidden="true">🍹</span>
+          <p className="text-[#8C9BAA] text-xl font-body">Sin bebidas en cola</p>
         </div>
       ) : (
         <div className="max-w-[1600px] mx-auto space-y-8">
-          {/* Active: items pending or in_prep */}
           {activeOrders.length > 0 && (
-            <section aria-label="Pedidos en preparación">
+            <section aria-label="Bebidas en preparación">
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {activeOrders.map((order) => (
-                  <KitchenCard
+                  <BarCard
                     key={order.id}
                     order={order}
                     isRemoving={removingOrderIds.includes(order.id)}
@@ -186,19 +167,18 @@ export function KitchenPage() {
             </section>
           )}
 
-          {/* Ready: all items done, waiting for waiter pickup */}
           {readyOrders.length > 0 && (
-            <section aria-label="Pedidos listos esperando mesero">
+            <section aria-label="Bebidas listas esperando mesero">
               <div className="flex items-center gap-3 mb-3">
                 <span className="text-xs font-bold text-[#1A6B3C] uppercase tracking-widest">
-                  Listos · esperando confirmación del mesero
+                  Listas · esperando al mesero
                 </span>
                 <div className="flex-1 h-px bg-[#1A6B3C]/20" />
                 <span className="text-xs text-[#1A6B3C] font-mono">{readyOrders.length}</span>
               </div>
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {readyOrders.map((order) => (
-                  <KitchenCard
+                  <BarCard
                     key={order.id}
                     order={order}
                     isCompactMode

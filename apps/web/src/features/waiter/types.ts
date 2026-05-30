@@ -3,6 +3,8 @@ export type OrderType = 'dine_in' | 'delivery'
 export type TableStatus = 'free' | 'occupied' | 'reserved'
 export type ItemStatus = 'pending' | 'in_prep' | 'ready' | 'served'
 export type OrderStatus = 'pending' | 'in_prep' | 'ready' | 'delivered' | 'cancelled'
+export type CategoryType = 'food' | 'drink' | 'other'
+export type DispatchArea = 'kitchen' | 'bar' | 'waiter'
 
 export interface WaiterUser {
   id: string
@@ -20,7 +22,15 @@ export interface ApiMenuItem {
   imageUrl: string | null
   isAvailable: boolean
   isFeatured: boolean
-  category: { id: string; name: string; type: 'food' | 'drink' | 'other' }
+  category: { id: string; name: string; type: CategoryType }
+}
+
+// Item summary used in the table board (GET /tables response)
+export interface ActiveOrderItemSummary {
+  id: string
+  status: ItemStatus
+  assignedArea: DispatchArea
+  menuItem: { name: string }
 }
 
 export interface ActiveOrderSummary {
@@ -28,12 +38,11 @@ export interface ActiveOrderSummary {
   orderNumber: number
   status: OrderStatus
   isAdditional: boolean
+  parentOrderId: string | null
   createdAt: string
-  items: Array<{
-    id: string
-    status: ItemStatus
-    menuItem: { name: string }
-  }>
+  waiter: { id: string; name: string }
+  items: ActiveOrderItemSummary[]
+  invoice: { id: string; status: 'pending' | 'paid' | 'voided'; total: string } | null
 }
 
 export interface ApiTable {
@@ -53,6 +62,7 @@ export interface CartItem {
   notes: string
 }
 
+// Full order detail (GET /orders response) — items include full assignedArea
 export interface ApiOrder {
   id: string
   orderNumber: number
@@ -70,7 +80,13 @@ export interface ApiOrder {
     unitPrice: string
     notes: string | null
     status: ItemStatus
-    menuItem: { id: string; name: string; prepTimeMinutes: number }
+    assignedArea: DispatchArea
+    menuItem: {
+      id: string
+      name: string
+      prepTimeMinutes: number
+      category: { type: CategoryType }
+    }
   }>
   invoice: {
     id: string

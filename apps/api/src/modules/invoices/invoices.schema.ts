@@ -9,6 +9,8 @@ export const createInvoiceSchema = z.object({
 })
 
 export const payInvoiceSchema = z.object({
+  // Overrides the method chosen at invoice creation — set at the moment of collection.
+  paymentMethod: z.enum(['cash', 'card', 'yape', 'plin', 'other']).optional(),
   paymentReference: z.string().optional(),
 })
 

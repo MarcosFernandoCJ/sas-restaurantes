@@ -1,11 +1,16 @@
 import { prisma } from '../../lib/prisma'
-import type { OrderStatus, OrderType, Prisma } from '@prisma/client'
+import type { DispatchArea, OrderStatus, OrderType, Prisma } from '@prisma/client'
 
 const orderInclude = {
   items: {
     include: {
       menuItem: {
-        select: { id: true, name: true, prepTimeMinutes: true },
+        select: {
+          id: true,
+          name: true,
+          prepTimeMinutes: true,
+          category: { select: { type: true } }, // categoryType for waiter drink handling
+        },
       },
     },
   },
@@ -29,7 +34,7 @@ export const ordersRepository = {
   async findMenuItemById(menuItemId: string) {
     return prisma.menuItem.findUnique({
       where: { id: menuItemId },
-      select: { id: true, basePrice: true, isAvailable: true, name: true },
+      select: { id: true, basePrice: true, isAvailable: true, name: true, dispatchArea: true },
     })
   },
 
@@ -40,7 +45,7 @@ export const ordersRepository = {
     notes?: string
     isAdditional: boolean
     parentOrderId?: string
-    items: { menuItemId: string; quantity: number; notes?: string; unitPrice: number }[]
+    items: { menuItemId: string; quantity: number; notes?: string; unitPrice: number; assignedArea: DispatchArea }[]
   }) {
     return prisma.order.create({
       data: {
@@ -56,6 +61,7 @@ export const ordersRepository = {
             quantity: item.quantity,
             notes: item.notes,
             unitPrice: item.unitPrice,
+            assignedArea: item.assignedArea,
           })),
         },
       },
@@ -108,7 +114,7 @@ export const ordersRepository = {
 
   async addItems(
     orderId: string,
-    items: { menuItemId: string; quantity: number; notes?: string; unitPrice: number }[]
+    items: { menuItemId: string; quantity: number; notes?: string; unitPrice: number; assignedArea: DispatchArea }[]
   ) {
     return prisma.orderItem.createMany({
       data: items.map(item => ({
@@ -117,6 +123,7 @@ export const ordersRepository = {
         quantity: item.quantity,
         notes: item.notes,
         unitPrice: item.unitPrice,
+        assignedArea: item.assignedArea,
       })),
     })
   },

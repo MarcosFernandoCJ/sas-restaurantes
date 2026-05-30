@@ -43,6 +43,7 @@ export function useAdminApi() {
       request<T>(path, { method: 'POST', body: JSON.stringify(body) }, token),
     patch: <T>(path: string, body?: unknown) =>
       request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, token),
+    del: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }, token),
   }
 }
 

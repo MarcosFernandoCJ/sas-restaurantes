@@ -49,24 +49,27 @@ export function setupSocket(httpServer: HTTPServer): Server {
     // Auto-join rooms for authenticated users
     if (user) {
       if (user.role === 'chef') socket.join('room:kitchen')
-      if (user.role === 'waiter') socket.join(`room:waiter:${user.sub}`)
+      if (user.role === 'waiter') {
+        socket.join(`room:waiter:${user.sub}`)
+        socket.join('room:waiters') // broadcast room — all waiters receive journey/global events
+      }
       if (user.role === 'admin') {
         socket.join('room:admin')
         socket.join('room:kitchen')
       }
     }
 
-    // Allow unauthenticated clients (kitchen display) to join room:kitchen via explicit event
+    // Allow unauthenticated clients (kitchen/bar display) to join via explicit event
     socket.on('join:room', (room: string) => {
-      if (room === 'room:kitchen') socket.join(room)
+      if (room === 'room:kitchen' || room === 'room:bar') socket.join(room)
     })
 
-    // Only register action handlers (claim/ready/served) for authenticated users
-    if (user) {
-      import('../modules/socket/socket.handler').then(({ registerSocketHandlers }) => {
-        registerSocketHandlers(socket, io!)
-      })
-    }
+    // Register socket handlers for all connections.
+    // Kitchen display connects without auth (PIN-based) but still needs item:ready.
+    // The handler itself guards item:claim against null chefId.
+    import('../modules/socket/socket.handler').then(({ registerSocketHandlers }) => {
+      registerSocketHandlers(socket, io!)
+    })
   })
 
   return io

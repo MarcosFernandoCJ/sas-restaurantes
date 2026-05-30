@@ -19,13 +19,14 @@ export const orderItemsRepository = {
     })
   },
 
-  // Chef claims an item — transitions to in_prep and assigns chef
-  async claimItem(itemId: string, chefId: string) {
+  // Chef claims an item — transitions to in_prep and optionally assigns chef.
+  // chefId is null when called from the unauthenticated kitchen display.
+  async claimItem(itemId: string, chefId: string | null) {
     return prisma.orderItem.update({
       where: { id: itemId },
       data: {
         status: 'in_prep',
-        assignedChefId: chefId,
+        ...(chefId ? { assignedChefId: chefId } : {}),
         prepStartedAt: new Date(),
       },
       include: itemWithContextInclude,
@@ -48,8 +49,17 @@ export const orderItemsRepository = {
   async markItemServed(itemId: string) {
     return prisma.orderItem.update({
       where: { id: itemId },
-      data: { status: 'served' },
+      data: { status: 'served', deliveredAt: new Date() },
       select: { id: true, orderId: true, status: true },
+    })
+  },
+
+  // Records when the waiter was notified the item is ready for pickup
+  async setNotifiedAt(itemId: string) {
+    return prisma.orderItem.update({
+      where: { id: itemId },
+      data: { notifiedAt: new Date() },
+      select: { id: true },
     })
   },
 

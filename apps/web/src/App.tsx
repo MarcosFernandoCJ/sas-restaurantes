@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Button, Badge, Card, Spinner } from '@sas/ui'
 import type { BadgeVariant } from '@sas/ui'
 import { KitchenPage } from '@/pages/KitchenPage'
+import { BarPage } from '@/pages/BarPage'
 import { WaiterPage } from '@/pages/WaiterPage'
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
 import { LoginForm } from '@/features/waiter/components/LoginForm'
@@ -48,8 +49,9 @@ function DesignSystemDemo() {
             Design System · Sesión 1.3 · Paleta "Brasas & Carbón"
           </p>
           <div className="flex justify-center gap-4 text-sm text-muted mt-2">
-            <a href="/kitchen" className="underline text-secondary">→ Vista Cocina</a>
-            <a href="/waiter" className="underline text-secondary">→ Vista Mesero</a>
+            <a href="/kitchen" className="underline text-secondary">→ Cocina</a>
+            <a href="/bar" className="underline text-secondary">→ Bar</a>
+            <a href="/waiter" className="underline text-secondary">→ Mesero</a>
             <a href="/admin/dashboard" className="underline text-secondary">→ Admin</a>
           </div>
         </header>
@@ -155,6 +157,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DesignSystemDemo />} />
         <Route path="/kitchen" element={<KitchenPage />} />
+        <Route path="/bar" element={<BarPage />} />
         <Route path="/waiter" element={<WaiterRoute />} />
         <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

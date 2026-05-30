@@ -2,7 +2,9 @@ import type { FastifyInstance } from 'fastify'
 import { requireRole } from '../../middleware/require-role'
 import { ordersService } from './orders.service'
 import { orderItemsRepository } from './order-items.repository'
+import { journeyRepository } from '../journey/journey.repository'
 import { emitToRoom } from '../../lib/socket'
+import { prisma } from '../../lib/prisma'
 import {
   createOrderSchema,
   updateOrderStatusSchema,
@@ -11,9 +13,95 @@ import {
   updateOrderItemSchema,
 } from './orders.schema'
 
+// Items from an order that carry dispatchArea info (post prisma-generate type)
+type DispatchItem = {
+  id: string
+  quantity: number
+  notes: string | null
+  status: string
+  assignedArea: string
+  menuItem: { name: string }
+}
+
+function buildAreaPayload(
+  order: {
+    id: string
+    orderNumber: number
+    type: string
+    isAdditional: boolean
+    parentOrderId: string | null
+    notes: string | null
+    createdAt: Date
+    table: { number: number } | null
+  },
+  items: DispatchItem[]
+) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    type: order.type as 'dine_in' | 'delivery',
+    tableNumber: order.table?.number ?? undefined,
+    isAdditional: order.isAdditional,
+    parentOrderId: order.parentOrderId ?? undefined,
+    notes: order.notes ?? undefined,
+    createdAt: order.createdAt.toISOString(),
+    items: items.map((item) => ({
+      id: item.id,
+      menuItemName: item.menuItem.name,
+      quantity: item.quantity,
+      notes: item.notes ?? undefined,
+      status: item.status as 'pending' | 'in_prep' | 'ready' | 'served',
+    })),
+  }
+}
+
+function dispatchOrderToAreas(
+  order: Parameters<typeof buildAreaPayload>[0] & { items: unknown[] },
+  waiterId: string
+): void {
+  const allItems = order.items as unknown as DispatchItem[]
+  const kitchenItems = allItems.filter((i) => i.assignedArea === 'kitchen')
+  const barItems = allItems.filter((i) => i.assignedArea === 'bar')
+
+  const event = order.isAdditional ? 'order:additional' : 'order:created'
+
+  if (kitchenItems.length > 0) {
+    emitToRoom('room:kitchen', event, buildAreaPayload(order, kitchenItems))
+  }
+  if (barItems.length > 0) {
+    emitToRoom('room:bar', event, buildAreaPayload(order, barItems))
+  }
+
+  // Waiter room — always notify so TableDetail refreshes
+  const tableId = order.table ? (order as unknown as { table: { id?: string } }).table?.id : null
+  if (tableId) {
+    emitToRoom(`room:waiter:${waiterId}`, 'table:updated', {
+      tableId,
+      orderId: order.id,
+    })
+  }
+
+  // Fire-and-forget audit log
+  // TODO: tipar — socketEvent y SocketEventType existen post-migración
+  const db = prisma as unknown as {
+    socketEvent: { create: (args: { data: unknown }) => Promise<unknown> }
+  }
+  db.socketEvent
+    .create({
+      data: {
+        type: order.isAdditional ? 'ADDITIONAL_ORDER_CREATED' : 'ORDER_CREATED',
+        orderId: order.id,
+        userId: waiterId,
+        payload: { orderNumber: order.orderNumber },
+      },
+    })
+    .catch(() => {})
+}
+
 export async function ordersRoutes(fastify: FastifyInstance): Promise<void> {
-  // POST /orders — Crear un pedido con sus ítems
-  // Status inicial: 'pending'. No entra a cocina hasta que la factura esté pagada.
+  // POST /orders — Crear un pedido con sus ítems.
+  // El pedido se despacha inmediatamente a cocina/bar según assignedArea de cada ítem.
+  // El pago es una operación financiera separada y no bloquea el despacho operativo.
   fastify.post(
     '/orders',
     { preHandler: requireRole(['admin', 'waiter']) },
@@ -27,10 +115,22 @@ export async function ordersRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
+        const session = await journeyRepository.findOpen()
+        if (!session) {
+          return reply.status(403).send({
+            error: 'Jornada no iniciada',
+            message: 'El local no ha iniciado jornada. Contacta al administrador.',
+          })
+        }
+
         const order = await ordersService.createOrder({
           ...result.data,
           waiterId: request.user.sub,
         })
+
+        // Dispatch immediately to kitchen/bar — payment status is irrelevant
+        dispatchOrderToAreas(order as Parameters<typeof dispatchOrderToAreas>[0], request.user.sub)
+
         return reply.status(201).send(order)
       } catch (err: unknown) {
         const e = err as { message: string; statusCode?: number }
@@ -150,8 +250,10 @@ export async function ordersRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const updated = await orderItemsRepository.updateNotes(itemId, result.data.notes)
+        const assignedArea = (existing as unknown as { assignedArea: string }).assignedArea ?? 'kitchen'
+        const targetRoom = assignedArea === 'bar' ? 'room:bar' : 'room:kitchen'
 
-        emitToRoom('room:kitchen', 'order:item:updated', {
+        emitToRoom(targetRoom, 'order:item:updated', {
           itemId: updated.id,
           orderId: updated.orderId,
           notes: updated.notes,

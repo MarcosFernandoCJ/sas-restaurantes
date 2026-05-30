@@ -1,16 +1,26 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Spinner } from '@sas/ui'
 import type { ApiTable } from '../types'
-import { TableCard } from './TableCard'
+import { TableCard, type TableCardActions } from './TableCard'
 import { useApi } from '../hooks/useApi'
 
 interface TableBoardProps {
-  onSelectFreeTable: (table: ApiTable) => void
-  onSelectOccupiedTable: (table: ApiTable) => void
+  onSelectTable: (table: ApiTable) => void
+  onAddToTable?: (table: ApiTable) => void
+  onPayTable?: (table: ApiTable) => void
+  onServeTable?: (table: ApiTable) => void
   refreshSignal?: number
+  currentUserId?: string
 }
 
-export function TableBoard({ onSelectFreeTable, onSelectOccupiedTable, refreshSignal }: TableBoardProps) {
+export function TableBoard({
+  onSelectTable,
+  onAddToTable,
+  onPayTable,
+  onServeTable,
+  refreshSignal,
+  currentUserId,
+}: TableBoardProps) {
   const { get } = useApi()
   const [tables, setTables] = useState<ApiTable[]>([])
   const [loading, setLoading] = useState(true)
@@ -31,14 +41,6 @@ export function TableBoard({ onSelectFreeTable, onSelectOccupiedTable, refreshSi
   useEffect(() => {
     void fetchTables()
   }, [fetchTables, refreshSignal])
-
-  const handleSelect = (table: ApiTable) => {
-    if (table.orders.length > 0) {
-      onSelectOccupiedTable(table)
-    } else {
-      onSelectFreeTable(table)
-    }
-  }
 
   if (loading) {
     return (
@@ -70,9 +72,15 @@ export function TableBoard({ onSelectFreeTable, onSelectOccupiedTable, refreshSi
             En servicio ({occupiedTables.length})
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {occupiedTables.map((table) => (
-              <TableCard key={table.id} table={table} onSelect={handleSelect} />
-            ))}
+            {occupiedTables.map((table) => {
+              const cardActions: TableCardActions = {
+                onDetail: onSelectTable,
+                onAdd: onAddToTable,
+                onPay: onPayTable,
+                onServe: onServeTable,
+              }
+              return <TableCard key={table.id} table={table} actions={cardActions} currentUserId={currentUserId} />
+            })}
           </div>
         </section>
       )}
@@ -83,9 +91,12 @@ export function TableBoard({ onSelectFreeTable, onSelectOccupiedTable, refreshSi
             Disponibles ({freeTables.length})
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {freeTables.map((table) => (
-              <TableCard key={table.id} table={table} onSelect={handleSelect} />
-            ))}
+            {freeTables.map((table) => {
+              const cardActions: TableCardActions = {
+                onDetail: onSelectTable,
+              }
+              return <TableCard key={table.id} table={table} actions={cardActions} />
+            })}
           </div>
         </section>
       )}

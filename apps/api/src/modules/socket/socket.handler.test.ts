@@ -414,7 +414,7 @@ describe('item:served → checkAndAutoDeliver', () => {
 
   it('llama a markItemServed y checkAndAutoDeliver con el orderId correcto', async () => {
     vi.mocked(orderItemsRepository.markItemServed).mockResolvedValue(mockServedItem as any)
-    vi.mocked(ordersService.checkAndAutoDeliver).mockResolvedValue(undefined)
+    vi.mocked(ordersService.checkAndAutoDeliver).mockResolvedValue(false)
 
     waiterClient.emit('item:served', { itemId: 'item-1' })
 
@@ -468,7 +468,7 @@ describe('Flujo completo — cocinero reclama, termina, mesero recoge', () => {
     vi.mocked(orderItemsRepository.claimItem).mockResolvedValue(mockClaimedItem as any)
     vi.mocked(orderItemsRepository.markItemReady).mockResolvedValue(mockReadyItem as any)
     vi.mocked(orderItemsRepository.markItemServed).mockResolvedValue(mockServedItem as any)
-    vi.mocked(ordersService.checkAndAutoDeliver).mockResolvedValue(undefined)
+    vi.mocked(ordersService.checkAndAutoDeliver).mockResolvedValue(false)
 
     // Step 1: chef claims the item
     const claimedPromise = waitForEvent(kitchenObserver, 'order:item:claimed')

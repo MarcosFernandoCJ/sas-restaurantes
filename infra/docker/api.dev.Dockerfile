@@ -12,13 +12,13 @@ RUN apk add --no-cache openssl libc6-compat && corepack enable
 
 WORKDIR /app
 
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/api/package.json      ./apps/api/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY packages/ui/package.json   ./packages/ui/package.json
 COPY apps/web/package.json      ./apps/web/package.json
 
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Copiar schema de Prisma para generar el client durante el build
 COPY apps/api/prisma ./apps/api/prisma

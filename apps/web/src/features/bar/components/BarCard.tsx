@@ -1,13 +1,11 @@
 import { Button } from '@sas/ui'
-import type { KitchenOrder, KitchenOrderItem } from '../types'
-import { useElapsedTime, formatElapsed } from '../hooks/useElapsedTime'
+import type { BarOrder, BarOrderItem } from '../types'
+import { useElapsedTime, formatElapsed } from '../../kitchen/hooks/useElapsedTime'
 
-const WARN_THRESHOLD_MS = 15 * 60 * 1000 // 15 min
-
-// ─── Item row ────────────────────────────────────────────────────────────────
+const WARN_THRESHOLD_MS = 10 * 60 * 1000 // 10 min (bebidas se preparan más rápido)
 
 interface ItemRowProps {
-  item: KitchenOrderItem
+  item: BarOrderItem
   isCompactMode: boolean
   onClaim: () => void
   onReady: () => void
@@ -26,45 +24,29 @@ function ItemRow({ item, isCompactMode, onClaim, onReady, onClearUpdate }: ItemR
     >
       <div className={['flex-1 min-w-0', isDone ? 'line-through decoration-[#8C9BAA]' : ''].join(' ')}>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xl font-bold text-[#B0C4D8] tabular-nums">
-            ×{item.quantity}
-          </span>
-          <span className="text-lg text-white font-semibold">
-            {item.menuItemName}
-          </span>
+          <span className="text-xl font-bold text-[#B0C4D8] tabular-nums">×{item.quantity}</span>
+          <span className="text-lg text-white font-semibold">{item.menuItemName}</span>
           {item.hasUpdate && (
             <span
               className="animate-pulse inline-block text-xs font-bold bg-accent text-[#0F1A24] px-2 py-0.5 rounded-full uppercase tracking-wide"
               role="status"
-              aria-label="Ítem actualizado por el mesero"
             >
               ACTUALIZADO
             </span>
           )}
           {item.status === 'in_prep' && (
-            <span className="text-xs font-semibold text-[#2563A8]">En preparación</span>
+            <span className="text-xs font-semibold text-[#2563A8]">Preparando</span>
           )}
         </div>
-        {item.notes && (
-          <p className="text-sm text-accent mt-1 leading-snug">⚠ {item.notes}</p>
-        )}
-        {item.assignedChefName && item.status === 'in_prep' && (
-          <p className="text-xs text-[#8C9BAA] mt-0.5">Chef: {item.assignedChefName}</p>
-        )}
+        {item.notes && <p className="text-sm text-accent mt-1">⚠ {item.notes}</p>}
       </div>
 
-      {/* Action column */}
       <div className="flex-shrink-0 flex items-center">
         {!isCompactMode && (
           <>
             {item.status === 'pending' && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onClaim}
-                aria-label={`Empezar preparación: ${item.menuItemName}`}
-              >
-                Empezar
+              <Button variant="secondary" size="sm" onClick={onClaim}>
+                Preparar
               </Button>
             )}
             {item.status === 'in_prep' && (
@@ -72,33 +54,26 @@ function ItemRow({ item, isCompactMode, onClaim, onReady, onClearUpdate }: ItemR
                 variant="primary"
                 size="sm"
                 onClick={() => { onReady(); if (item.hasUpdate) onClearUpdate() }}
-                aria-label={`Marcar listo: ${item.menuItemName}`}
               >
-                ✓ Listo
+                ✓ Lista
               </Button>
             )}
             {item.status === 'ready' && (
-              <span className="text-sm font-bold text-[#1A6B3C]" aria-label="Listo para recoger">
-                ✓ Listo
-              </span>
+              <span className="text-sm font-bold text-[#1A6B3C]">✓ Lista</span>
             )}
             {item.status === 'served' && (
-              <span className="text-xs text-[#8C9BAA]">Entregado</span>
+              <span className="text-xs text-[#8C9BAA]">Entregada</span>
             )}
           </>
         )}
-        {isCompactMode && (
-          <span className="text-sm font-bold text-[#1A6B3C]">✓</span>
-        )}
+        {isCompactMode && <span className="text-sm font-bold text-[#1A6B3C]">✓</span>}
       </div>
     </li>
   )
 }
 
-// ─── Card ────────────────────────────────────────────────────────────────────
-
-export interface KitchenCardProps {
-  order: KitchenOrder
+export interface BarCardProps {
+  order: BarOrder
   isCompactMode?: boolean
   isRemoving?: boolean
   onMarkItemReady: (itemId: string) => void
@@ -106,14 +81,14 @@ export interface KitchenCardProps {
   onClearUpdate: (orderId: string, itemId: string) => void
 }
 
-export function KitchenCard({
+export function BarCard({
   order,
   isCompactMode = false,
   isRemoving = false,
   onMarkItemReady,
   onClaimItem,
   onClearUpdate,
-}: KitchenCardProps) {
+}: BarCardProps) {
   const elapsed = useElapsedTime(order.createdAt)
 
   const anyPending = order.items.some((i) => i.status === 'pending')
@@ -143,24 +118,18 @@ export function KitchenCard({
       ].join(' ')}
       aria-label={`Pedido #${order.orderNumber}`}
     >
-      {/* Header */}
-      <header
-        className={[
-          'px-4 py-3 flex items-center justify-between gap-3 border-b border-[#1E2F3F]',
-          isDelivery ? 'bg-[#C8410A]/10' : '',
-        ].join(' ')}
-      >
+      <header className={[
+        'px-4 py-3 flex items-center justify-between gap-3 border-b border-[#1E2F3F]',
+        isDelivery ? 'bg-[#C8410A]/10' : '',
+      ].join(' ')}>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-display text-2xl font-bold text-white">
-            #{order.orderNumber}
-          </span>
-
+          <span className="font-display text-2xl font-bold text-white">#{order.orderNumber}</span>
           {isDelivery ? (
-            <span className="flex items-center gap-1 text-sm font-bold bg-[#C8410A] text-white px-2.5 py-1 rounded-lg uppercase tracking-wide shadow-sm">
+            <span className="flex items-center gap-1 text-sm font-bold bg-[#C8410A] text-white px-2.5 py-1 rounded-lg uppercase tracking-wide">
               🛵 DELIVERY
             </span>
           ) : order.isAdditional ? (
-            <span className="text-xs font-bold bg-[#A05A2C] text-white px-2 py-0.5 rounded-full uppercase tracking-wide">
+            <span className="text-xs font-bold bg-[#A05A2C] text-white px-2 py-0.5 rounded-full uppercase">
               ADICIONAL
             </span>
           ) : (
@@ -168,7 +137,6 @@ export function KitchenCard({
               MESA {order.tableNumber ?? '—'}
             </span>
           )}
-
           {isCompactMode && (
             <span className="text-xs font-bold text-[#1A6B3C] bg-[#1A6B3C]/10 px-2 py-0.5 rounded-full border border-[#1A6B3C]/30">
               ESPERANDO MESERO
@@ -176,15 +144,12 @@ export function KitchenCard({
           )}
         </div>
 
-        {/* Elapsed timer */}
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
           <time
             className={[
               'text-2xl font-mono font-bold tabular-nums leading-none',
               isTimerCritical ? 'text-red-400 animate-pulse' : anyInPrep ? 'text-[#2563A8]' : 'text-[#B0C4D8]',
             ].join(' ')}
-            dateTime={order.createdAt.toISOString()}
-            aria-label={`Tiempo en cola: ${formatElapsed(elapsed)}`}
           >
             {formatElapsed(elapsed)}
           </time>
@@ -194,9 +159,8 @@ export function KitchenCard({
         </div>
       </header>
 
-      {/* Items list */}
       <div className="flex-1 px-4 py-1">
-        <ul role="list" aria-label="Ítems del pedido">
+        <ul role="list">
           {order.items.map((item) => (
             <ItemRow
               key={item.id}
@@ -208,7 +172,6 @@ export function KitchenCard({
             />
           ))}
         </ul>
-
         {order.notes && (
           <p className="mt-2 pb-2 text-sm text-accent border-t border-[#1E2F3F] pt-2">
             📝 {order.notes}
@@ -216,11 +179,10 @@ export function KitchenCard({
         )}
       </div>
 
-      {/* Footer — status summary */}
       <footer className="px-4 py-2 border-t border-[#1E2F3F] flex items-center gap-2 flex-wrap">
         {allReady ? (
           <span className="text-sm font-bold text-[#1A6B3C]">
-            ✓ Cocina lista — esperando confirmación del mesero
+            ✓ Bar listo — esperando confirmación del mesero
           </span>
         ) : (
           <>
@@ -232,7 +194,7 @@ export function KitchenCard({
             )}
             {order.items.filter((i) => i.status === 'in_prep').length > 0 && (
               <span className="text-xs text-[#2563A8] font-semibold">
-                {order.items.filter((i) => i.status === 'in_prep').length} en preparación
+                {order.items.filter((i) => i.status === 'in_prep').length} preparando
               </span>
             )}
             {order.items.filter((i) => i.status === 'ready').length > 0 && (

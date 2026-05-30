@@ -1,33 +1,30 @@
 import { create } from 'zustand'
-import type { KitchenOrder, KitchenOrderItem, ItemStatus, JourneyState } from '../types'
+import type { BarOrder, BarOrderItem, ItemStatus, JourneyState } from '../types'
 
-interface KitchenState {
-  orders: KitchenOrder[]
+interface BarState {
+  orders: BarOrder[]
   journey: JourneyState
   removingOrderIds: string[]
 
-  // Order management
-  setOrders: (orders: KitchenOrder[]) => void
-  addOrder: (order: KitchenOrder) => void
+  setOrders: (orders: BarOrder[]) => void
+  addOrder: (order: BarOrder) => void
   removeOrder: (orderId: string) => void
   markOrderRemoving: (orderId: string) => void
 
-  // Item status transitions
   claimItem: (orderId: string, itemId: string, chefName: string | null) => void
   markItemReady: (orderId: string, itemId: string) => void
   updateItemStatus: (orderId: string, itemId: string, status: ItemStatus) => void
   markItemUpdated: (
     orderId: string,
     itemId: string,
-    patch: Partial<Pick<KitchenOrderItem, 'notes' | 'quantity' | 'menuItemName'>>
+    patch: Partial<Pick<BarOrderItem, 'notes' | 'quantity' | 'menuItemName'>>
   ) => void
   clearItemUpdated: (orderId: string, itemId: string) => void
 
-  // Journey
   setJourney: (journey: JourneyState) => void
 }
 
-export const useKitchenStore = create<KitchenState>((set) => ({
+export const useBarStore = create<BarState>((set) => ({
   orders: [],
   journey: { sessionId: null, isOpen: false, startedAt: null },
   removingOrderIds: [],
@@ -36,7 +33,6 @@ export const useKitchenStore = create<KitchenState>((set) => ({
 
   addOrder: (order) =>
     set((state) => ({
-      // Avoid duplicates if both HTTP fetch and socket emit deliver the same order
       orders: state.orders.some((o) => o.id === order.id)
         ? state.orders
         : [...state.orders, order],
@@ -48,7 +44,6 @@ export const useKitchenStore = create<KitchenState>((set) => ({
       removingOrderIds: state.removingOrderIds.filter((id) => id !== orderId),
     })),
 
-  // Start the fade-out animation; caller must call removeOrder after the CSS transition (≈3s)
   markOrderRemoving: (orderId) =>
     set((state) => ({
       removingOrderIds: state.removingOrderIds.includes(orderId)
@@ -65,7 +60,6 @@ export const useKitchenStore = create<KitchenState>((set) => ({
               ...order,
               items: order.items.map((item) => {
                 if (item.id !== itemId) return item
-                // Don't downgrade from ready — auto-claim echo arrives after optimistic update
                 if (item.status === 'ready' || item.status === 'served') return item
                 return { ...item, status: 'in_prep' as const, assignedChefName: chefName ?? undefined }
               }),

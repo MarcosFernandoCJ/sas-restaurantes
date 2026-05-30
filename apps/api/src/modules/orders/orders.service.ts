@@ -7,7 +7,7 @@ function makeError(message: string, statusCode: number): Error {
 
 export const ordersService = {
   async createOrder(data: CreateOrderBody & { waiterId: string }) {
-    // Fetch current price from DB for each item — prevents price manipulation from client
+    // Fetch current price and dispatch area from DB — prevents price manipulation from client
     const itemsWithPrices = await Promise.all(
       data.items.map(async item => {
         const menuItem = await ordersRepository.findMenuItemById(item.menuItemId)
@@ -19,6 +19,7 @@ export const ordersService = {
           quantity: item.quantity,
           notes: item.notes,
           unitPrice: Number(menuItem.basePrice),
+          assignedArea: menuItem.dispatchArea,
         }
       })
     )
@@ -81,6 +82,7 @@ export const ordersService = {
           quantity: item.quantity,
           notes: item.notes,
           unitPrice: Number(menuItem.basePrice),
+          assignedArea: menuItem.dispatchArea,
         }
       })
     )
@@ -94,10 +96,13 @@ export const ordersService = {
 
   // Called when an order_item status changes to 'served'.
   // When ALL items in the order are served, the order auto-transitions to 'delivered'.
-  async checkAndAutoDeliver(orderId: string): Promise<void> {
+  // Returns true if the order was just delivered (for caller to trigger journey metrics).
+  async checkAndAutoDeliver(orderId: string): Promise<boolean> {
     const items = await ordersRepository.getAllItemStatuses(orderId)
-    if (items.length > 0 && items.every(item => item.status === 'served')) {
+    if (items.length > 0 && items.every((item: { status: string }) => item.status === 'served')) {
       await ordersRepository.updateStatus(orderId, 'delivered')
+      return true
     }
+    return false
   },
 }

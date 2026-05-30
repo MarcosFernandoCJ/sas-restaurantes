@@ -3,7 +3,9 @@ import { requireRole } from '../../middleware/require-role'
 import { prisma } from '../../lib/prisma'
 
 export async function tablesRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /tables — Lista todas las mesas con sus pedidos activos
+  // GET /tables — Lista todas las mesas con TODOS sus pedidos activos.
+  // Incluye assignedArea para que el mesero pueda distinguir ítems de cocina/bar/directo.
+  // Retorna múltiples pedidos por mesa para mostrar adicionales correctamente.
   fastify.get(
     '/tables',
     { preHandler: requireRole(['admin', 'waiter', 'chef']) },
@@ -18,13 +20,24 @@ export async function tablesRoutes(fastify: FastifyInstance): Promise<void> {
               orderNumber: true,
               status: true,
               isAdditional: true,
+              parentOrderId: true,
               createdAt: true,
+              waiter: { select: { id: true, name: true } },
               items: {
-                select: { id: true, status: true, menuItem: { select: { name: true } } },
+                select: {
+                  id: true,
+                  status: true,
+                  assignedArea: true,
+                  menuItem: {
+                    select: { name: true },
+                  },
+                },
+              },
+              invoice: {
+                select: { id: true, status: true, total: true },
               },
             },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
+            orderBy: { createdAt: 'asc' },
           },
         },
       })

@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react'
 import { Card, Button, Badge, Spinner } from '@sas/ui'
 import type { BadgeVariant } from '@sas/ui'
 import { useAdminApi } from '../hooks/useAdminApi'
-import type { SystemUser, UserRole, RestaurantTable, SystemParams } from '../types'
+import type {
+  SystemUser, UserRole, RestaurantTable, SystemParams,
+  TableMode, WaiterTableAssignment,
+} from '../types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -19,11 +22,6 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 ]
 
 const SECTIONS = ['Salón Principal', 'Terraza', 'Barra', 'VIP', 'Jardín']
-
-const DEFAULT_PARAMS: SystemParams = {
-  reminderIntervalMin: 3,
-  criticalTimerMin: 15,
-}
 
 const INPUT_CLS =
   'w-full rounded-md border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white'
@@ -103,11 +101,7 @@ function UserFormModal({
           <h3 className="font-display font-semibold text-primary">
             {editing ? 'Editar usuario' : 'Nuevo usuario'}
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-muted hover:text-primary text-xl leading-none"
-          >
+          <button type="button" onClick={onClose} className="text-muted hover:text-primary text-xl leading-none">
             ✕
           </button>
         </div>
@@ -126,9 +120,7 @@ function UserFormModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-primary mb-1">
-              Correo electrónico
-            </label>
+            <label className="block text-sm font-medium text-primary mb-1">Correo electrónico</label>
             <input
               type="email"
               value={form.email}
@@ -141,9 +133,7 @@ function UserFormModal({
 
           {!editing && (
             <div>
-              <label className="block text-sm font-medium text-primary mb-1">
-                Contraseña temporal
-              </label>
+              <label className="block text-sm font-medium text-primary mb-1">Contraseña temporal</label>
               <input
                 type="password"
                 value={form.password}
@@ -151,9 +141,7 @@ function UserFormModal({
                 className={INPUT_CLS}
                 placeholder="Mínimo 8 caracteres"
               />
-              <p className="text-xs text-muted mt-1">
-                El usuario deberá cambiarla en su primer inicio de sesión.
-              </p>
+              <p className="text-xs text-muted mt-1">El usuario deberá cambiarla en su primer inicio.</p>
             </div>
           )}
 
@@ -165,15 +153,13 @@ function UserFormModal({
               className={INPUT_CLS}
             >
               {ROLE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
 
           {editing && (
-            <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
                 id="user-active"
                 type="checkbox"
@@ -181,19 +167,15 @@ function UserFormModal({
                 onChange={e => patchForm('isActive', e.target.checked)}
                 className="h-4 w-4 rounded border-border"
               />
-              <label htmlFor="user-active" className="text-sm font-medium text-primary cursor-pointer">
-                Usuario activo
-              </label>
-            </div>
+              <span className="text-sm font-medium text-primary">Usuario activo</span>
+            </label>
           )}
 
           {error && <p className="text-sm text-state-danger">{error}</p>}
         </form>
 
         <div className="flex justify-end gap-3 px-5 pb-5">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Cancelar
-          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
           <Button type="submit" form="user-form" size="sm" loading={saving}>
             {editing ? 'Guardar cambios' : 'Crear usuario'}
           </Button>
@@ -263,11 +245,7 @@ function TableFormModal({
           <h3 className="font-display font-semibold text-primary">
             {editing ? 'Editar mesa' : 'Nueva mesa'}
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-muted hover:text-primary text-xl leading-none"
-          >
+          <button type="button" onClick={onClose} className="text-muted hover:text-primary text-xl leading-none">
             ✕
           </button>
         </div>
@@ -277,9 +255,7 @@ function TableFormModal({
             <div>
               <label className="block text-sm font-medium text-primary mb-1">Número</label>
               <input
-                type="number"
-                min="1"
-                max="999"
+                type="number" min="1" max="999"
                 value={form.number}
                 onChange={e => patchForm('number', e.target.value)}
                 className={INPUT_CLS}
@@ -290,9 +266,7 @@ function TableFormModal({
             <div>
               <label className="block text-sm font-medium text-primary mb-1">Capacidad</label>
               <input
-                type="number"
-                min="1"
-                max="30"
+                type="number" min="1" max="30"
                 value={form.capacity}
                 onChange={e => patchForm('capacity', e.target.value)}
                 className={INPUT_CLS}
@@ -313,9 +287,7 @@ function TableFormModal({
               placeholder="Salón Principal"
             />
             <datalist id="section-suggestions">
-              {SECTIONS.map(s => (
-                <option key={s} value={s} />
-              ))}
+              {SECTIONS.map(s => <option key={s} value={s} />)}
             </datalist>
           </div>
 
@@ -323,14 +295,129 @@ function TableFormModal({
         </form>
 
         <div className="flex justify-end gap-3 px-5 pb-5">
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Cancelar
-          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancelar</Button>
           <Button type="submit" form="table-form" size="sm" loading={saving}>
             {editing ? 'Guardar cambios' : 'Crear mesa'}
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── TableAssignmentsCard ─────────────────────────────────────────────────────
+// Visible only when tableMode === 'assigned'.
+// Admin picks which tables each waiter is responsible for today.
+
+function TableAssignmentsCard({
+  waiters,
+  allTables,
+}: {
+  waiters: SystemUser[]
+  allTables: Pick<RestaurantTable, 'id' | 'number' | 'section'>[]
+}) {
+  const api = useAdminApi()
+  const [assignments, setAssignments] = useState<Record<string, Set<string>>>({})
+  const [saving, setSaving] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api
+      .get<WaiterTableAssignment[]>('/admin/table-assignments')
+      .then((list) => {
+        const map: Record<string, Set<string>> = {}
+        for (const a of list) {
+          map[a.waiterId] = new Set(a.tables.map((t) => t.id))
+        }
+        setAssignments(map)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function toggleTable(waiterId: string, tableId: string) {
+    setAssignments((prev) => {
+      const current = new Set(prev[waiterId] ?? [])
+      if (current.has(tableId)) current.delete(tableId)
+      else current.add(tableId)
+      return { ...prev, [waiterId]: current }
+    })
+  }
+
+  async function saveWaiter(waiterId: string) {
+    setSaving(waiterId)
+    try {
+      await api.post('/admin/table-assignments', {
+        waiterId,
+        tableIds: Array.from(assignments[waiterId] ?? []),
+      })
+    } catch {
+      // keep UI state — error is silent for now
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <Spinner size="md" label="Cargando asignaciones..." />
+      </div>
+    )
+  }
+
+  const waiterList = waiters.filter((u) => u.role === 'waiter' && u.isActive)
+
+  return (
+    <div className="space-y-4">
+      {waiterList.length === 0 && (
+        <p className="text-sm text-muted text-center py-6">No hay meseros activos.</p>
+      )}
+      {waiterList.map((waiter) => {
+        const assigned = assignments[waiter.id] ?? new Set()
+        return (
+          <div key={waiter.id} className="border border-border rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+              <div>
+                <p className="font-semibold text-primary text-sm">{waiter.name}</p>
+                <p className="text-xs text-muted">{assigned.size} mesa{assigned.size !== 1 ? 's' : ''} asignada{assigned.size !== 1 ? 's' : ''}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => saveWaiter(waiter.id)}
+                loading={saving === waiter.id}
+                disabled={saving !== null && saving !== waiter.id}
+              >
+                Guardar
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[...allTables].sort((a, b) => a.number - b.number).map((table) => {
+                const isAssigned = assigned.has(table.id)
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    onClick={() => toggleTable(waiter.id, table.id)}
+                    className={[
+                      'rounded-lg border-2 px-3 py-1.5 text-sm font-mono font-semibold transition-all',
+                      isAssigned
+                        ? 'border-secondary bg-secondary/10 text-secondary'
+                        : 'border-border text-muted hover:border-secondary/50',
+                    ].join(' ')}
+                    title={`Mesa ${table.number} — ${table.section ?? 'Sin sección'}`}
+                  >
+                    #{table.number}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -342,7 +429,11 @@ export function ConfiguracionTab() {
 
   const [users, setUsers] = useState<SystemUser[]>([])
   const [tables, setTables] = useState<RestaurantTable[]>([])
-  const [params, setParams] = useState<SystemParams>(DEFAULT_PARAMS)
+  const [params, setParams] = useState<SystemParams>({
+    reminderIntervalMin: 3,
+    criticalTimerMin: 15,
+    tableMode: 'free',
+  })
   const [loading, setLoading] = useState(true)
 
   const [showUserForm, setShowUserForm] = useState(false)
@@ -371,42 +462,22 @@ export function ConfiguracionTab() {
 
   // ── User handlers ──────────────────────────────────────────────────────────
 
-  function openCreateUser() {
-    setEditingUser(null)
-    setShowUserForm(true)
-  }
-  function openEditUser(u: SystemUser) {
-    setEditingUser(u)
-    setShowUserForm(true)
-  }
-  function closeUserForm() {
-    setShowUserForm(false)
-    setEditingUser(null)
-  }
+  function openCreateUser() { setEditingUser(null); setShowUserForm(true) }
+  function openEditUser(u: SystemUser) { setEditingUser(u); setShowUserForm(true) }
+  function closeUserForm() { setShowUserForm(false); setEditingUser(null) }
   function handleUserSaved(saved: SystemUser) {
     setUsers(prev => {
       const idx = prev.findIndex(u => u.id === saved.id)
-      return idx >= 0
-        ? prev.map(u => (u.id === saved.id ? saved : u))
-        : [saved, ...prev]
+      return idx >= 0 ? prev.map(u => (u.id === saved.id ? saved : u)) : [saved, ...prev]
     })
     closeUserForm()
   }
 
   // ── Table handlers ─────────────────────────────────────────────────────────
 
-  function openCreateTable() {
-    setEditingTable(null)
-    setShowTableForm(true)
-  }
-  function openEditTable(t: RestaurantTable) {
-    setEditingTable(t)
-    setShowTableForm(true)
-  }
-  function closeTableForm() {
-    setShowTableForm(false)
-    setEditingTable(null)
-  }
+  function openCreateTable() { setEditingTable(null); setShowTableForm(true) }
+  function openEditTable(t: RestaurantTable) { setEditingTable(t); setShowTableForm(true) }
+  function closeTableForm() { setShowTableForm(false); setEditingTable(null) }
   function handleTableSaved(saved: RestaurantTable) {
     setTables(prev => {
       const idx = prev.findIndex(t => t.id === saved.id)
@@ -421,7 +492,7 @@ export function ConfiguracionTab() {
       await api.patch(`/admin/tables/${id}`, { isActive: false })
       setTables(prev => prev.filter(t => t.id !== id))
     } catch {
-      // silent — table remains visible
+      // silent — table remains visible if delete fails (e.g., FK constraint)
     }
   }
 
@@ -461,14 +532,12 @@ export function ConfiguracionTab() {
         <p className="text-sm text-muted mt-0.5">Usuarios, mesas y parámetros del sistema</p>
       </div>
 
-      {/* ── Usuarios ─────────────────────────────────────────────────────────── */}
+      {/* ── Usuarios ──────────────────────────────────────────────────────────── */}
       <Card
         header={
           <div className="flex items-center justify-between">
             <span>Usuarios del sistema</span>
-            <Button type="button" size="sm" onClick={openCreateUser}>
-              + Nuevo usuario
-            </Button>
+            <Button type="button" size="sm" onClick={openCreateUser}>+ Nuevo usuario</Button>
           </div>
         }
       >
@@ -489,19 +558,15 @@ export function ConfiguracionTab() {
             <tbody>
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-muted">
-                    Sin usuarios registrados
-                  </td>
+                  <td colSpan={5} className="text-center py-8 text-muted">Sin usuarios registrados</td>
                 </tr>
               ) : (
                 users.map(user => (
                   <tr key={user.id} className="border-b border-border/50 hover:bg-surface/60">
                     <td className="py-3 px-3 font-medium text-primary">{user.name}</td>
-                    <td className="py-3 px-3 text-muted">{user.email}</td>
+                    <td className="py-3 px-3 text-muted text-xs">{user.email}</td>
                     <td className="py-3 px-3">
-                      <Badge variant={ROLE_CONFIG[user.role].variant}>
-                        {ROLE_CONFIG[user.role].label}
-                      </Badge>
+                      <Badge variant={ROLE_CONFIG[user.role].variant}>{ROLE_CONFIG[user.role].label}</Badge>
                     </td>
                     <td className="py-3 px-3">
                       <Badge variant={user.isActive ? 'ready' : 'default'}>
@@ -509,12 +574,7 @@ export function ConfiguracionTab() {
                       </Badge>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditUser(user)}
-                      >
+                      <Button type="button" variant="ghost" size="sm" onClick={() => openEditUser(user)}>
                         Editar
                       </Button>
                     </td>
@@ -526,14 +586,12 @@ export function ConfiguracionTab() {
         </div>
       </Card>
 
-      {/* ── Mesas ────────────────────────────────────────────────────────────── */}
+      {/* ── Mesas ─────────────────────────────────────────────────────────────── */}
       <Card
         header={
           <div className="flex items-center justify-between">
             <span>Mesas del restaurante</span>
-            <Button type="button" size="sm" onClick={openCreateTable}>
-              + Nueva mesa
-            </Button>
+            <Button type="button" size="sm" onClick={openCreateTable}>+ Nueva mesa</Button>
           </div>
         }
       >
@@ -541,92 +599,91 @@ export function ConfiguracionTab() {
           <p className="text-sm text-muted text-center py-8">Sin mesas registradas</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {[...tables]
-              .sort((a, b) => a.number - b.number)
-              .map(t => (
-                <div
-                  key={t.id}
-                  className="rounded-lg border border-border bg-white p-3 flex flex-col gap-2"
-                >
-                  <div className="flex items-start justify-between">
-                    <span className="font-mono font-bold text-primary text-lg">#{t.number}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTable(t.id)}
-                      className="text-muted hover:text-state-danger text-xs transition-colors leading-none"
-                      title="Eliminar mesa"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="text-xs text-muted space-y-0.5">
-                    <p>
-                      Capacidad:{' '}
-                      <span className="font-medium text-primary">{t.capacity} pers.</span>
-                    </p>
-                    <p className="truncate">{t.section}</p>
-                  </div>
-                  <Button
+            {[...tables].sort((a, b) => a.number - b.number).map(t => (
+              <div key={t.id} className="rounded-lg border border-border bg-white p-3 flex flex-col gap-2">
+                <div className="flex items-start justify-between">
+                  <span className="font-mono font-bold text-primary text-lg">#{t.number}</span>
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs"
-                    onClick={() => openEditTable(t)}
+                    onClick={() => handleRemoveTable(t.id)}
+                    className="text-muted hover:text-state-danger text-xs transition-colors leading-none"
+                    title="Eliminar mesa"
                   >
-                    Editar
-                  </Button>
+                    ✕
+                  </button>
                 </div>
-              ))}
+                <div className="text-xs text-muted space-y-0.5">
+                  <p>Capacidad: <span className="font-medium text-primary">{t.capacity} pers.</span></p>
+                  <p className="truncate">{t.section}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => openEditTable(t)}
+                >
+                  Editar
+                </Button>
+              </div>
+            ))}
           </div>
         )}
       </Card>
 
-      {/* ── Parámetros del Sistema ────────────────────────────────────────────── */}
+      {/* ── Parámetros del Sistema ─────────────────────────────────────────────── */}
       <Card header="Parámetros del sistema">
         <form onSubmit={handleSaveParams} className="space-y-5">
+          {/* Table mode toggle */}
+          <div>
+            <p className="text-sm font-medium text-primary mb-2">Modalidad de asignación de mesas</p>
+            <div className="flex gap-3">
+              {([
+                { value: 'free', label: 'Libre', desc: 'Cualquier mesero atiende cualquier mesa' },
+                { value: 'assigned', label: 'Asignación fija', desc: 'Cada mesero tiene mesas asignadas' },
+              ] as { value: TableMode; label: string; desc: string }[]).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setParams(p => ({ ...p, tableMode: opt.value }))}
+                  className={[
+                    'flex-1 rounded-xl border-2 p-3 text-left transition-all',
+                    params.tableMode === opt.value
+                      ? 'border-secondary bg-secondary/5'
+                      : 'border-border hover:border-secondary/40',
+                  ].join(' ')}
+                >
+                  <p className="font-semibold text-primary text-sm">{opt.label}</p>
+                  <p className="text-xs text-muted mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium text-primary mb-1">
                 Intervalo de recordatorio al mesero (min)
               </label>
               <input
-                type="number"
-                min="1"
-                max="60"
+                type="number" min="1" max="60"
                 value={params.reminderIntervalMin}
-                onChange={e =>
-                  setParams(p => ({
-                    ...p,
-                    reminderIntervalMin: parseInt(e.target.value) || p.reminderIntervalMin,
-                  }))
-                }
+                onChange={e => setParams(p => ({ ...p, reminderIntervalMin: parseInt(e.target.value) || p.reminderIntervalMin }))}
                 className={INPUT_CLS}
               />
-              <p className="text-xs text-muted mt-1">
-                Cada cuántos minutos se recuerda al mesero los pedidos pendientes. Default: 3 min.
-              </p>
+              <p className="text-xs text-muted mt-1">Cada cuántos minutos se recuerda al mesero los pedidos pendientes. Default: 3 min.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-primary mb-1">
                 Umbral de timer crítico en cocina (min)
               </label>
               <input
-                type="number"
-                min="1"
-                max="60"
+                type="number" min="1" max="60"
                 value={params.criticalTimerMin}
-                onChange={e =>
-                  setParams(p => ({
-                    ...p,
-                    criticalTimerMin: parseInt(e.target.value) || p.criticalTimerMin,
-                  }))
-                }
+                onChange={e => setParams(p => ({ ...p, criticalTimerMin: parseInt(e.target.value) || p.criticalTimerMin }))}
                 className={INPUT_CLS}
               />
-              <p className="text-xs text-muted mt-1">
-                Minutos desde que el pedido entra a cocina hasta que el timer se pone en rojo.
-                Default: 15 min.
-              </p>
+              <p className="text-xs text-muted mt-1">Minutos desde que el pedido entra a cocina hasta que el timer se pone en rojo. Default: 15 min.</p>
             </div>
           </div>
 
@@ -637,27 +694,33 @@ export function ConfiguracionTab() {
           )}
 
           <div className="flex justify-end">
-            <Button type="submit" loading={paramsSaving}>
-              Guardar parámetros
-            </Button>
+            <Button type="submit" loading={paramsSaving}>Guardar parámetros</Button>
           </div>
         </form>
       </Card>
 
+      {/* ── Asignación de mesas ─────────────────────────────────────────────────
+          Visible solo cuando tableMode = 'assigned'.
+          Admin elige qué mesas atiende cada mesero hoy.
+      */}
+      {params.tableMode === 'assigned' && (
+        <Card header="Asignación de mesas por mesero (hoy)">
+          <p className="text-xs text-muted mb-4">
+            Selecciona las mesas de cada mesero para el turno de hoy. Los cambios se guardan de forma individual.
+          </p>
+          <TableAssignmentsCard
+            waiters={users}
+            allTables={tables}
+          />
+        </Card>
+      )}
+
       {/* Modals */}
       {showUserForm && (
-        <UserFormModal
-          editing={editingUser}
-          onClose={closeUserForm}
-          onSaved={handleUserSaved}
-        />
+        <UserFormModal editing={editingUser} onClose={closeUserForm} onSaved={handleUserSaved} />
       )}
       {showTableForm && (
-        <TableFormModal
-          editing={editingTable}
-          onClose={closeTableForm}
-          onSaved={handleTableSaved}
-        />
+        <TableFormModal editing={editingTable} onClose={closeTableForm} onSaved={handleTableSaved} />
       )}
     </div>
   )

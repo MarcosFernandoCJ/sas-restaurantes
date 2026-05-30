@@ -5,6 +5,9 @@ import { invoicesRoutes } from './modules/invoices/invoices.routes'
 import { tablesRoutes } from './modules/tables/tables.routes'
 import { menuRoutes } from './modules/menu/menu.routes'
 import { kitchenRoutes } from './modules/kitchen/kitchen.routes'
+import { barRoutes } from './modules/bar/bar.routes'
+import { journeyRoutes } from './modules/journey/journey.routes'
+import { adminRoutes } from './modules/admin/admin.routes'
 import { devRoutes } from './modules/dev/dev.routes'
 import { setupSocket } from './lib/socket'
 import { startNotificationsWorker } from './modules/notifications/notifications.worker'
@@ -45,6 +48,9 @@ app.register(invoicesRoutes)
 app.register(tablesRoutes)
 app.register(menuRoutes)
 app.register(kitchenRoutes)
+app.register(barRoutes)
+app.register(journeyRoutes)
+app.register(adminRoutes)
 app.register(devRoutes)
 
 const start = async () => {

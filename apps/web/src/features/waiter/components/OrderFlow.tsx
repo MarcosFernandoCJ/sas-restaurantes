@@ -45,6 +45,53 @@ function StepIndicator({ current }: { current: StepName }) {
   )
 }
 
+// ─── Pay choice screen ────────────────────────────────────────────────────────
+
+interface PayChoiceProps {
+  total: number
+  onPayNow: () => void
+  onPayLater: () => void
+}
+
+function PayChoiceScreen({ total, onPayNow, onPayLater }: PayChoiceProps) {
+  return (
+    <div className="flex flex-col gap-6 py-4">
+      <div className="text-center">
+        <p className="text-4xl font-mono font-bold text-primary">S/ {total.toFixed(2)}</p>
+        <p className="text-sm text-muted mt-1">Pedido creado con éxito</p>
+      </div>
+
+      <div className="grid gap-3">
+        <button
+          type="button"
+          onClick={onPayNow}
+          className="w-full flex items-center gap-4 rounded-xl border-2 border-secondary bg-secondary/5 px-5 py-4 text-left hover:bg-secondary/10 active:scale-[0.98] transition-all"
+        >
+          <span className="text-3xl">💳</span>
+          <div>
+            <p className="font-semibold text-primary">Pagar ahora</p>
+            <p className="text-xs text-muted mt-0.5">Registrar el cobro ahora</p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={onPayLater}
+          className="w-full flex items-center gap-4 rounded-xl border-2 border-border px-5 py-4 text-left hover:border-muted hover:bg-surface active:scale-[0.98] transition-all"
+        >
+          <span className="text-3xl">🕐</span>
+          <div>
+            <p className="font-semibold text-primary">Pagar después</p>
+            <p className="text-xs text-muted mt-0.5">El pedido ya está en cocina/bar. El cobro queda pendiente.</p>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main flow ────────────────────────────────────────────────────────────────
+
 export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
   const { post } = useApi()
   const { items, tableId, type, notes, isAdditional, parentOrderId, tableNumber, clear } = useCartStore()
@@ -54,10 +101,10 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
   const [createdInvoiceId, setCreatedInvoiceId] = useState<string | null>(null)
   const [orderTotal, setOrderTotal] = useState(0)
+  const [showPayChoice, setShowPayChoice] = useState(false)
   const [showPayment, setShowPayment] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
 
-  const foodCount = items.length
   const totalItems = items.reduce((a, i) => a + i.quantity, 0)
 
   const handleConfirmOrder = async () => {
@@ -66,8 +113,7 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
     setOrderError(null)
 
     try {
-      // Step 1: Create order
-      const orderPayload = {
+      const order = await post<ApiOrder>('/orders', {
         tableId: tableId ?? undefined,
         type,
         notes: notes || undefined,
@@ -77,10 +123,8 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
           quantity: i.quantity,
           notes: i.notes || undefined,
         })),
-      }
-      const order = await post<ApiOrder>('/orders', orderPayload)
+      })
 
-      // Step 2: Create invoice (total computed from server prices)
       const subtotal = items.reduce((a, i) => a + i.basePrice * i.quantity, 0)
       const invoice = await post<ApiInvoice>('/invoices', {
         orderId: order.id,
@@ -92,8 +136,8 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
 
       setCreatedOrderId(order.id)
       setCreatedInvoiceId(invoice.id)
-      setOrderTotal(subtotal)
-      setShowPayment(true)
+      setOrderTotal(Number(invoice.total) || subtotal)
+      setShowPayChoice(true)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Error al crear el pedido'
       setOrderError(msg)
@@ -102,32 +146,59 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
     }
   }
 
+  // "Pagar ahora" → open payment modal
+  const handlePayNow = () => {
+    setShowPayChoice(false)
+    setShowPayment(true)
+  }
+
+  // "Pagar después" → navigate back to board; table shows "Falta pagar" badge
+  const handlePayLater = () => {
+    clear()
+    onComplete()
+  }
+
+  // PaymentModal success
+  const handlePaymentSuccess = () => {
+    clear()
+    onComplete()
+  }
+
+  // PaymentModal cancel (don't discard the order — it already exists)
+  const handlePaymentCancel = () => {
+    setShowPayment(false)
+    setShowPayChoice(true)
+  }
+
   if (showPayment && createdOrderId && createdInvoiceId) {
     return (
       <PaymentModal
         orderId={createdOrderId}
         invoiceId={createdInvoiceId}
         total={orderTotal}
-        onSuccess={() => {
-          clear()
-          onComplete()
-        }}
-        onCancel={() => {
-          // Order was created but not paid — stay on payment modal
-          // In a real app we'd offer retry or void the invoice
-          setShowPayment(false)
-          setCurrentStep('Resumen')
-        }}
+        onSuccess={handlePaymentSuccess}
+        onCancel={handlePaymentCancel}
       />
+    )
+  }
+
+  if (showPayChoice) {
+    return (
+      <div className="flex flex-col h-full">
+        <StepIndicator current="Resumen" />
+        <PayChoiceScreen
+          total={orderTotal}
+          onPayNow={handlePayNow}
+          onPayLater={handlePayLater}
+        />
+      </div>
     )
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Step indicator */}
       <StepIndicator current={currentStep} />
 
-      {/* Step content */}
       <div className="flex-1 overflow-y-auto">
         {currentStep === 'Platos' && (
           <div>
@@ -160,14 +231,12 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
         )}
       </div>
 
-      {/* Error */}
       {orderError && (
         <p role="alert" className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mt-3">
           {orderError}
         </p>
       )}
 
-      {/* Bottom nav (only for food/drink steps) */}
       {(currentStep === 'Platos' || currentStep === 'Bebidas') && (
         <div className="pt-4 border-t border-border mt-4 flex items-center gap-3">
           {currentStep === 'Bebidas' && (
@@ -182,17 +251,14 @@ export function OrderFlow({ onComplete, onCancel }: OrderFlowProps) {
             </span>
           )}
           {currentStep === 'Platos' ? (
-            <Button
-              variant="primary"
-              onClick={() => setCurrentStep('Bebidas')}
-            >
+            <Button variant="primary" onClick={() => setCurrentStep('Bebidas')}>
               Bebidas →
             </Button>
           ) : (
             <Button
               variant="primary"
               onClick={() => setCurrentStep('Resumen')}
-              disabled={foodCount === 0 && totalItems === 0}
+              disabled={totalItems === 0}
             >
               Resumen →
             </Button>

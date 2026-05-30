@@ -73,21 +73,29 @@ export enum CategoryType {
 export const WS_ROOMS = {
   KITCHEN: 'room:kitchen',
   ADMIN: 'room:admin',
+  WAITERS: 'room:waiters',               // broadcast to all connected waiters
   waiter: (userId: string) => `room:waiter:${userId}`,
 } as const
 
 export const WS_EVENTS = {
-  // server → client
-  ORDER_CREATED: 'order:created',
-  ORDER_ITEM_CLAIMED: 'order:item:claimed',
-  ORDER_ITEM_READY: 'order:item:ready',
-  ORDER_ITEM_UPDATED: 'order:item:updated',
-  ORDER_ADDITIONAL: 'order:additional',
-  STOCK_ALERT: 'stock:alert',
+  // server → kitchen
+  ORDER_CREATED: 'order:created',           // new order entered kitchen queue
+  ORDER_ADDITIONAL: 'order:additional',     // additional order for existing table
+  ORDER_ITEM_CLAIMED: 'order:item:claimed', // chef claimed an item (multi-chef visibility)
+  ORDER_ITEM_UPDATED: 'order:item:updated', // waiter edited item notes while in prep
+  ORDER_ITEM_READY_KITCHEN: 'order:item:ready', // item ready — emitted to both kitchen AND waiter
+  ORDER_DELIVERED: 'order:delivered',       // all items served; kitchen removes the card
+  // server → waiter
+  ORDER_ITEM_READY: 'order:item:ready',     // dine_in: per-item pickup notification
+  ORDER_READY: 'order:ready',               // delivery: all items ready, pack now
+  STOCK_ALERT: 'stock:alert',               // ingredient below threshold
+  // server → all (journey state — kitchen + waiters + admin)
+  JOURNEY_STARTED: 'journey:started',       // admin opened the day; enables order creation
+  JOURNEY_ENDED: 'journey:ended',           // admin closed the day; blocks order creation
   // client → server
-  ITEM_CLAIM: 'item:claim',
-  ITEM_READY: 'item:ready',
-  ITEM_SERVED: 'item:served',
+  ITEM_CLAIM: 'item:claim',                 // optional explicit claim (multi-chef)
+  ITEM_READY: 'item:ready',                 // chef marks item done; auto-claims if pending
+  ITEM_SERVED: 'item:served',               // waiter confirms delivery
 } as const
 
 // --- DTOs y tipos del dominio ---

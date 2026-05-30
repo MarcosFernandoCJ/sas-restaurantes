@@ -8,7 +8,9 @@
       "Bash(docker compose *)",
       "Bash(where npm *)",
       "Bash(where npx *)",
-      "PowerShell(docker compose version *)"
+      "PowerShell(docker compose version *)",
+      "Bash(apps/api/node_modules/.bin/tsc --project apps/api/tsconfig.json --noEmit)",
+      "Bash(apps/web/node_modules/.bin/tsc --project apps/web/tsconfig.json --noEmit)"
     ]
   }
 }

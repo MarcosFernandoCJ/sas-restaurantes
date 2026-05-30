@@ -81,6 +81,28 @@ enum CategoryType {
   other
 }
 
+enum DispatchArea {
+  kitchen
+  bar
+  waiter
+}
+
+enum SocketEventType {
+  ORDER_CREATED
+  ADDITIONAL_ORDER_CREATED
+  ITEM_STARTED
+  ITEM_READY
+  WAITER_NOTIFIED
+  ITEM_DELIVERED
+  SHIFT_OPENED
+  SHIFT_CLOSED
+}
+
+enum JourneyStatus {
+  open
+  closed
+}
+
 // =============================================================================
 // MODELS
 // =============================================================================
@@ -92,15 +114,18 @@ model User {
   email        String   @unique @db.VarChar(150)
   passwordHash String   @map("password_hash")
   role         UserRole
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  isActive           Boolean  @default(true) @map("is_active")
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  createdAt          DateTime @default(now()) @map("created_at")
 
-  waiterSessions    WaiterSession[]
-  orders            Order[]        @relation("WaiterOrders")
-  claimedOrderItems OrderItem[]    @relation("ChefAssigned")
-  purchases         Purchase[]     @relation("PurchaseRegistrar")
-  confirmedMenus    DailyMenu[]    @relation("MenuConfirmer")
-  notifications     Notification[] @relation("NotificationTarget")
+  waiterSessions         WaiterSession[]
+  orders                 Order[]          @relation("WaiterOrders")
+  claimedOrderItems      OrderItem[]      @relation("ChefAssigned")
+  purchases              Purchase[]       @relation("PurchaseRegistrar")
+  confirmedMenus         DailyMenu[]      @relation("MenuConfirmer")
+  notifications          Notification[]   @relation("NotificationTarget")
+  journeySessionsStarted JourneySession[] @relation("JourneyStartedBy")
+  journeySessionsEnded   JourneySession[] @relation("JourneyEndedBy")
 
   @@map("users")
 }
@@ -168,10 +193,14 @@ model MenuItem {
   basePrice       Decimal  @db.Decimal(10, 2) @map("base_price")
   prepTimeMinutes Int      @default(10) @map("prep_time_minutes")
   imageUrl        String?  @map("image_url")
-  isAvailable     Boolean  @default(true) @map("is_available")
-  isFeatured      Boolean  @default(false) @map("is_featured")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  isAvailable         Boolean      @default(true) @map("is_available")
+  isFeatured          Boolean      @default(false) @map("is_featured")
+  isDirectIngredient  Boolean      @default(false) @map("is_direct_ingredient")
+  isActive            Boolean      @default(true) @map("is_active")
+  requiresPreparation Boolean      @default(true) @map("requires_preparation")
+  dispatchArea        DispatchArea @default(kitchen) @map("dispatch_area")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
 
   category   MenuCategory @relation(fields: [categoryId], references: [id])
   recipes    Recipe[]
@@ -233,7 +262,7 @@ model DailyMenu {
 }
 
 // --- Pedidos ---
-// Regla crítica: un pedido solo entra a cocina después de invoice.status = 'paid'
+// Los ítems se despachan a cocina/bar inmediatamente al crear el pedido (no depende del pago)
 // Los adicionales tienen is_additional = true y parent_order_id apuntando al original
 model Order {
   id            String      @id @default(uuid())
@@ -267,10 +296,13 @@ model OrderItem {
   quantity       Int
   unitPrice      Decimal    @db.Decimal(10, 2) @map("unit_price")
   notes          String?
-  status         ItemStatus @default(pending)
-  assignedChefId String?    @map("assigned_chef_id")
-  prepStartedAt  DateTime?  @map("prep_started_at")
-  prepFinishedAt DateTime?  @map("prep_finished_at")
+  status         ItemStatus   @default(pending)
+  assignedArea   DispatchArea @default(kitchen) @map("assigned_area")
+  assignedChefId String?      @map("assigned_chef_id")
+  prepStartedAt  DateTime?    @map("prep_started_at")
+  prepFinishedAt DateTime?    @map("prep_finished_at")
+  notifiedAt     DateTime?    @map("notified_at")
+  deliveredAt    DateTime?    @map("delivered_at")
 
   order        Order    @relation(fields: [orderId], references: [id])
   menuItem     MenuItem @relation(fields: [menuItemId], references: [id])
@@ -361,6 +393,68 @@ model Notification {
   targetUser User? @relation("NotificationTarget", fields: [targetUserId], references: [id])
 
   @@map("notifications")
+}
+
+// --- Jornada de cocina ---
+// Cada día de operación tiene una JourneySession abierta por el admin.
+// Las métricas se escriben incrementalmente al completar cada pedido (crash-safe).
+model JourneySession {
+  id          String        @id @default(uuid())
+  status      JourneyStatus @default(open)
+  startedAt   DateTime      @default(now()) @map("started_at")
+  endedAt     DateTime?     @map("ended_at")
+  startedById String        @map("started_by_id")
+  endedById   String?       @map("ended_by_id")
+
+  startedBy User           @relation("JourneyStartedBy", fields: [startedById], references: [id])
+  endedBy   User?          @relation("JourneyEndedBy", fields: [endedById], references: [id])
+  metrics   JourneyMetrics?
+
+  @@map("journey_sessions")
+}
+
+// Métricas acumuladas incrementalmente durante la jornada.
+// itemBreakdown: { [menuItemId]: { name, count, totalPrepSecs, totalRevenue } }
+// hourlyBreakdown: { "14": { orders: 3, revenue: "120.00" } }
+model JourneyMetrics {
+  id              String   @id @default(uuid())
+  sessionId       String   @unique @map("session_id")
+  ordersCompleted Int      @default(0) @map("orders_completed")
+  itemsPrepared   Int      @default(0) @map("items_prepared")
+  totalRevenue    Decimal  @default(0) @db.Decimal(12, 2) @map("total_revenue")
+  avgPrepTimeSecs Int      @default(0) @map("avg_prep_time_secs")
+  prepTimeCount   Int      @default(0) @map("prep_time_count")
+  itemBreakdown   Json     @default("{}") @map("item_breakdown")
+  hourlyBreakdown Json     @default("{}") @map("hourly_breakdown")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  session JourneySession @relation(fields: [sessionId], references: [id])
+
+  @@map("journey_metrics")
+}
+
+// --- Configuración del sistema (clave/valor) ---
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+// --- Audit log de eventos de socket ---
+// Permite trazar ORDER_CREATED, ITEM_STARTED, ITEM_READY, WAITER_NOTIFIED,
+// ITEM_DELIVERED, SHIFT_OPENED, SHIFT_CLOSED para análisis y debugging.
+model SocketEvent {
+  id        String          @id @default(uuid())
+  type      SocketEventType
+  orderId   String?         @map("order_id")
+  itemId    String?         @map("item_id")
+  userId    String?         @map("user_id")
+  payload   Json            @default("{}")
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  @@map("socket_events")
 }
 
 // --- Eventos del calendario (días festivos, eventos especiales) ---

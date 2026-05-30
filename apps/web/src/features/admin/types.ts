@@ -1,6 +1,6 @@
 export type IngredientStatus = 'ok' | 'low' | 'critical' | 'out'
 export type CategoryType = 'food' | 'drink' | 'other'
-export type AdminTab = 'inicio' | 'insumos' | 'recetario' | 'reportes' | 'compras' | 'configuracion'
+export type AdminTab = 'inicio' | 'insumos' | 'recetario' | 'reportes' | 'ventas' | 'compras' | 'configuracion'
 
 export interface AdminUser {
   id: string
@@ -137,6 +137,7 @@ export interface ReportKpi {
   costos: number
   ganancias: number
   margen: number
+  ordersCount: number
 }
 
 export interface PaymentMethodStat {
@@ -152,10 +153,51 @@ export interface TopDish {
   totalRevenue: number
 }
 
+export interface HourlyEntry {
+  hour: number
+  label: string
+  orders: number
+  revenue: number
+}
+
 export interface ReportData {
   kpi: ReportKpi
   paymentMethods: PaymentMethodStat[]
   topDishes: TopDish[]
+  hourlyBreakdown: HourlyEntry[]
+  operational: {
+    avgPrepSecs: number
+    avgPrepMin: number
+  }
+}
+
+// ─── Ventas ───────────────────────────────────────────────────────────────────
+
+export interface SaleRecord {
+  id: string
+  orderNumber: number
+  table: { id: string; number: number; section: string | null } | null
+  waiter: { id: string; name: string }
+  type: 'dine_in' | 'delivery'
+  status: string
+  isAdditional: boolean
+  createdAt: string
+  itemCount: number
+  invoice: {
+    id: string
+    invoiceNumber: string
+    status: 'pending' | 'paid' | 'voided'
+    paymentMethod: string
+    total: number
+    paidAt: string | null
+  } | null
+}
+
+export interface SalesPage {
+  data: SaleRecord[]
+  total: number
+  page: number
+  limit: number
 }
 
 // ─── Configuración ────────────────────────────────────────────────────────────
@@ -178,9 +220,25 @@ export interface RestaurantTable {
   section: string
 }
 
+export type TableMode = 'free' | 'assigned'
+
 export interface SystemParams {
   reminderIntervalMin: number
   criticalTimerMin: number
+  tableMode: TableMode
+}
+
+export interface TableForAssignment {
+  id: string
+  number: number
+  section: string | null
+}
+
+export interface WaiterTableAssignment {
+  sessionId: string
+  waiterId: string
+  waiterName: string
+  tables: TableForAssignment[]
 }
 
 // ─── Compras ──────────────────────────────────────────────────────────────────

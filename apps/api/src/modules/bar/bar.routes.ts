@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '../../lib/prisma'
 
-// Kitchen only shows items where assignedArea = 'kitchen'.
-// Bar and waiter-area items are routed to their respective screens.
-type KitchenItem = {
+// Bar shows only items where assignedArea = 'bar' and requiresPreparation = true.
+// Same lifecycle as kitchen: pending → in_prep → ready → served.
+type BarItem = {
   id: string
   menuItemName: string
   quantity: number
@@ -11,7 +11,7 @@ type KitchenItem = {
   status: string
 }
 
-type KitchenPayload = {
+type BarPayload = {
   id: string
   orderNumber: number
   type: string
@@ -20,7 +20,7 @@ type KitchenPayload = {
   parentOrderId?: string
   notes?: string
   createdAt: string
-  items: KitchenItem[]
+  items: BarItem[]
 }
 
 function mapOrder(o: {
@@ -40,8 +40,8 @@ function mapOrder(o: {
     assignedArea: string
     menuItem: { name: string }
   }>
-}): KitchenPayload {
-  const kitchenItems = o.items.filter((item) => item.assignedArea === 'kitchen')
+}): BarPayload {
+  const barItems = o.items.filter((item) => item.assignedArea === 'bar')
   return {
     id: o.id,
     orderNumber: o.orderNumber,
@@ -51,7 +51,7 @@ function mapOrder(o: {
     parentOrderId: o.parentOrderId ?? undefined,
     notes: o.notes ?? undefined,
     createdAt: o.createdAt.toISOString(),
-    items: kitchenItems.map((item) => ({
+    items: barItems.map((item) => ({
       id: item.id,
       menuItemName: item.menuItem.name,
       quantity: item.quantity,
@@ -76,18 +76,16 @@ const orderInclude = {
   table: { select: { number: true } },
 } as const
 
-export async function kitchenRoutes(fastify: FastifyInstance): Promise<void> {
-  // GET /kitchen/queue — cola activa de cocina (sin auth: pantalla dedicada sin login)
-  // Retorna pedidos que tengan al menos un ítem de comida no servido.
-  // La división activo/listo ocurre en el frontend según el estado de los ítems de comida.
-  fastify.get('/kitchen/queue', async (_request, reply) => {
+export async function barRoutes(fastify: FastifyInstance): Promise<void> {
+  // GET /bar/queue — cola activa de bebidas preparadas (sin auth: pantalla dedicada)
+  fastify.get('/bar/queue', async (_request, reply) => {
     const orders = await prisma.order.findMany({
       where: {
         status: { notIn: ['delivered', 'cancelled'] },
         items: {
           some: {
             status: { notIn: ['served'] },
-            assignedArea: 'kitchen',
+            assignedArea: 'bar',
           },
         },
       },
@@ -99,18 +97,18 @@ export async function kitchenRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.status(200).send((orders as unknown as Parameters<typeof mapOrder>[0][]).map(mapOrder))
   })
 
-  // GET /kitchen/ready — pedidos con todos sus ítems de comida en 'ready', esperando al mesero
-  fastify.get('/kitchen/ready', async (_request, reply) => {
+  // GET /bar/ready — bebidas listas esperando al mesero
+  fastify.get('/bar/ready', async (_request, reply) => {
     const orders = await prisma.order.findMany({
       where: {
         status: { notIn: ['delivered', 'cancelled'] },
         items: {
           none: {
             status: { in: ['pending', 'in_prep'] },
-            assignedArea: 'kitchen',
+            assignedArea: 'bar',
           },
           some: {
-            assignedArea: 'kitchen',
+            assignedArea: 'bar',
           },
         },
       },

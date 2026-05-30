@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { io, type Socket } from 'socket.io-client'
-import { useKitchenStore } from '../store/kitchen.store'
+import { useBarStore } from '../store/bar.store'
 import type {
-  KitchenOrder,
+  BarOrder,
   OrderCreatedPayload,
   OrderItemClaimedPayload,
   OrderItemReadyKitchenPayload,
@@ -15,7 +15,7 @@ import type {
 const SOCKET_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 const REMOVAL_DELAY_MS = 3000
 
-function payloadToOrder(payload: OrderCreatedPayload): KitchenOrder {
+function payloadToOrder(payload: OrderCreatedPayload): BarOrder {
   return {
     id: payload.id,
     orderNumber: payload.orderNumber,
@@ -33,7 +33,7 @@ function payloadToOrder(payload: OrderCreatedPayload): KitchenOrder {
   }
 }
 
-export function useKitchenSocket() {
+export function useBarSocket() {
   const socketRef = useRef<Socket | null>(null)
   const removalTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const {
@@ -45,18 +45,16 @@ export function useKitchenSocket() {
     markItemReady,
     markItemUpdated,
     setJourney,
-  } = useKitchenStore()
+  } = useBarStore()
 
-  // Initial load: fetch active queue via HTTP (kitchen has no JWT).
-  // cache: 'no-store' bypasses service worker cache so restarts always get fresh DB state.
+  // Initial load: fetch active bar queue via HTTP
   useEffect(() => {
-    fetch(`${SOCKET_URL}/kitchen/queue`, { cache: 'no-store' })
+    fetch(`${SOCKET_URL}/bar/queue`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data: OrderCreatedPayload[]) => setOrders(data.map(payloadToOrder)))
       .catch(() => { /* silent — queue starts empty if API unreachable */ })
   }, [setOrders])
 
-  // WebSocket connection — single instance, proper cleanup on unmount
   useEffect(() => {
     const socket = io(SOCKET_URL, {
       path: '/socket.io',
@@ -68,7 +66,7 @@ export function useKitchenSocket() {
     socketRef.current = socket
 
     socket.on('connect', () => {
-      socket.emit('join:room', 'room:kitchen')
+      socket.emit('join:room', 'room:bar')
     })
 
     socket.on('order:created', (payload: OrderCreatedPayload) => {
@@ -95,10 +93,8 @@ export function useKitchenSocket() {
       })
     })
 
-    // When waiter confirms all items delivered: fade the card out, then remove after delay
     socket.on('order:delivered', (payload: OrderDeliveredPayload) => {
       markOrderRemoving(payload.orderId)
-      // Cancel any existing timer for this order (idempotent)
       const existing = removalTimers.current.get(payload.orderId)
       if (existing) clearTimeout(existing)
       const timer = setTimeout(() => {
@@ -119,18 +115,15 @@ export function useKitchenSocket() {
     return () => {
       socket.removeAllListeners()
       socket.disconnect()
-      // Clear all pending removal timers on unmount
       removalTimers.current.forEach((t) => clearTimeout(t))
       removalTimers.current.clear()
     }
   }, [addOrder, claimItem, markItemReady, markItemUpdated, markOrderRemoving, removeOrder, setJourney])
 
-  // Chef clicks "Empezar preparación" → pending → in_prep
   const claimItemAction = (itemId: string) => {
     socketRef.current?.emit('item:claim', { itemId })
   }
 
-  // Chef clicks "✓ Listo" → in_prep → ready (auto-claims if still pending)
   const markItemReadyAction = (itemId: string) => {
     socketRef.current?.emit('item:ready', { itemId })
   }

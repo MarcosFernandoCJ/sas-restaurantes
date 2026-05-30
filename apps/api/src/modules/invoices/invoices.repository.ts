@@ -6,7 +6,14 @@ const invoiceWithOrderInclude = {
     include: {
       items: {
         include: {
-          menuItem: { select: { id: true, name: true, prepTimeMinutes: true } },
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              prepTimeMinutes: true,
+              category: { select: { type: true } },
+            },
+          },
         },
       },
       table: { select: { id: true, number: true, section: true } },
@@ -45,13 +52,14 @@ export const invoicesRepository = {
   },
 
   // REGLA CRÍTICA: solo puede llamarse si status === 'pending'. Nunca modificar una factura 'paid'.
-  async markAsPaid(id: string, paymentReference?: string) {
+  async markAsPaid(id: string, paymentMethod?: PaymentMethod, paymentReference?: string) {
     return prisma.invoice.update({
       where: { id },
       data: {
         status: 'paid',
         paidAt: new Date(),
         paymentReference,
+        ...(paymentMethod ? { paymentMethod } : {}),
       },
       include: invoiceWithOrderInclude,
     })

@@ -19,14 +19,21 @@ const STATUS_COLORS: Record<string, string> = {
   served: 'text-muted line-through',
 }
 
+const AREA_LABEL: Record<string, string> = {
+  bar: 'Bar',
+  kitchen: 'Cocina',
+}
+
 interface TableDetailProps {
   table: ApiTable
+  refreshSignal?: number
   onClose: () => void
   onNewOrder: () => void
   onServeItem?: (itemId: string) => void
+  onPay?: (orderId: string, invoiceId: string, total: number) => void
 }
 
-export function TableDetail({ table, onClose, onNewOrder, onServeItem }: TableDetailProps) {
+export function TableDetail({ table, refreshSignal, onClose, onNewOrder, onServeItem, onPay }: TableDetailProps) {
   const { get } = useApi()
   const setAdditional = useCartStore((s) => s.setAdditional)
   const notifications = useNotificationsStore((s) => s.notifications)
@@ -44,14 +51,17 @@ export function TableDetail({ table, onClose, onNewOrder, onServeItem }: TableDe
 
   useEffect(() => { fetchOrders() }, [fetchOrders])
 
-  // When a notification arrives for an item in one of this table's orders,
-  // update that item's status to 'ready' without a full refetch
+  useEffect(() => {
+    if (refreshSignal === undefined || refreshSignal === 0) return
+    fetchOrders()
+  }, [refreshSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Optimistic update from socket notifications: mark items as ready without refetch
   useEffect(() => {
     if (notifications.length === 0) return
     const orderIds = new Set(orders.map((o) => o.id))
     const relevant = notifications.filter((n) => orderIds.has(n.orderId))
     if (relevant.length === 0) return
-
     setOrders((prev) =>
       prev.map((o) => ({
         ...o,
@@ -72,13 +82,17 @@ export function TableDetail({ table, onClose, onNewOrder, onServeItem }: TableDe
   const handleServe = (itemId: string) => {
     onServeItem?.(itemId)
     dismissNotification(itemId)
-    // Optimistic UI
     setOrders((prev) =>
       prev.map((o) => ({
         ...o,
         items: o.items.map((i) => i.id === itemId ? { ...i, status: 'served' as const } : i),
       }))
     )
+  }
+
+  const handlePay = (order: ApiOrder) => {
+    if (!order.invoice) return
+    onPay?.(order.id, order.invoice.id, Number(order.invoice.total))
   }
 
   return (
@@ -102,50 +116,110 @@ export function TableDetail({ table, onClose, onNewOrder, onServeItem }: TableDe
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map((order) => (
-            <div key={order.id} className={[
-              'rounded-xl border-2 overflow-hidden',
-              order.isAdditional ? 'border-[#A05A2C]' : 'border-border',
-            ].join(' ')}>
-              <div className="bg-surface px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-primary">#{order.orderNumber}</span>
-                  {order.isAdditional && (
-                    <span className="text-xs bg-[#A05A2C] text-white px-2 py-0.5 rounded-full font-semibold">ADICIONAL</span>
-                  )}
-                </div>
-                <span className="text-xs text-muted">
-                  {new Date(order.createdAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-
-              <ul className="px-4 py-2 space-y-2">
-                {order.items.map((item) => (
-                  <li key={item.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
-                    <div className="flex-1">
-                      <span className="font-mono font-bold text-primary text-sm mr-2">×{item.quantity}</span>
-                      <span className="font-body text-primary text-sm">{item.menuItem.name}</span>
-                      {item.notes && <p className="text-xs text-accent">⚠ {item.notes}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={['text-xs', STATUS_COLORS[item.status] ?? ''].join(' ')}>
-                        {STATUS_LABELS[item.status] ?? item.status}
+          {orders.map((order) => {
+            const invoicePending = order.invoice?.status === 'pending'
+            return (
+              <div key={order.id} className={[
+                'rounded-xl border-2 overflow-hidden',
+                order.isAdditional ? 'border-[#A05A2C]' : invoicePending ? 'border-[#C8410A]' : 'border-border',
+              ].join(' ')}>
+                {/* Order header */}
+                <div className="bg-surface px-4 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-primary">#{order.orderNumber}</span>
+                    {order.isAdditional && (
+                      <span className="text-xs bg-[#A05A2C] text-white px-2 py-0.5 rounded-full font-semibold">ADICIONAL</span>
+                    )}
+                    {invoicePending && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#C8410A] bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#C8410A] animate-pulse" />
+                        Falta pagar
                       </span>
-                      {item.status === 'ready' && (
-                        <button
-                          type="button"
-                          onClick={() => handleServe(item.id)}
-                          className="text-xs bg-[#1A6B3C] text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-[#1A6B3C]/90 active:scale-95 transition-all"
-                        >
-                          Entregar
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                    )}
+                  </div>
+                  <span className="text-xs text-muted">
+                    {new Date(order.createdAt).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+
+                {/* Items */}
+                <ul className="px-4 py-2 space-y-2">
+                  {order.items.map((item) => {
+                    // Items handled by kitchen or bar need station confirmation before serving
+                    const needsStation = item.assignedArea === 'kitchen' || item.assignedArea === 'bar'
+                    // Direct waiter items (waiter area) can be served any time
+                    const isWaiterDirect = item.assignedArea === 'waiter'
+                    const canServeFromStation = needsStation && item.status === 'ready'
+                    const canServeDirectly = isWaiterDirect && item.status !== 'served'
+
+                    return (
+                      <li key={item.id} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50 last:border-0">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-primary text-sm">×{item.quantity}</span>
+                            <span className="font-body text-primary text-sm">{item.menuItem.name}</span>
+                            {isWaiterDirect && item.status !== 'served' && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2563A8]/10 text-[#2563A8] border border-[#2563A8]/20 uppercase">
+                                Directo
+                              </span>
+                            )}
+                            {needsStation && item.status !== 'served' && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 uppercase">
+                                {AREA_LABEL[item.assignedArea] ?? item.assignedArea}
+                              </span>
+                            )}
+                          </div>
+                          {item.notes && <p className="text-xs text-accent">⚠ {item.notes}</p>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {needsStation && (
+                            <span className={['text-xs', STATUS_COLORS[item.status] ?? ''].join(' ')}>
+                              {STATUS_LABELS[item.status] ?? item.status}
+                            </span>
+                          )}
+                          {canServeFromStation && (
+                            <button
+                              type="button"
+                              onClick={() => handleServe(item.id)}
+                              className="text-xs bg-[#1A6B3C] text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-[#1A6B3C]/90 active:scale-95 transition-all"
+                            >
+                              Entregar
+                            </button>
+                          )}
+                          {canServeDirectly && (
+                            <button
+                              type="button"
+                              onClick={() => handleServe(item.id)}
+                              className="text-xs bg-[#2563A8] text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-[#2563A8]/90 active:scale-95 transition-all"
+                            >
+                              Servir
+                            </button>
+                          )}
+                          {item.status === 'served' && (
+                            <span className="text-xs text-muted">Entregado</span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                {/* Pay action */}
+                {invoicePending && onPay && (
+                  <div className="px-4 py-3 border-t border-border bg-orange-50">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handlePay(order)}
+                      className="w-full bg-[#C8410A] hover:bg-[#C8410A]/90 border-[#C8410A]"
+                    >
+                      💳 Cobrar · S/ {Number(order.invoice?.total ?? 0).toFixed(2)}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           <Button variant="secondary" onClick={handleAddMore} className="w-full">
             + Agregar más ítems
