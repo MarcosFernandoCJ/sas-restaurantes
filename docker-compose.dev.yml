@@ -10,6 +10,7 @@ services:
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:1.27-alpine
+    restart: unless-stopped
     ports:
       - '80:80'
     volumes:
@@ -37,8 +38,11 @@ services:
       - /app/apps/web/node_modules
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:3001
-      - VITE_WS_URL=ws://localhost:3001
+      # Ruta relativa → el browser llama /api/... al mismo origen (nginx)
+      # Funciona en localhost:80, túnel Cloudflare y cualquier dominio
+      - VITE_API_URL=/api
+      # Target interno para el proxy de Vite (docker service name, no localhost)
+      - API_TARGET=http://api:3001
     networks:
       - sas-network
 
@@ -63,7 +67,8 @@ services:
       - DATABASE_URL=postgresql://sas:sas_password@db:5432/sas_restaurante
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=dev_secret_change_in_production
-      - CORS_ORIGIN=http://localhost:3000
+      # * acepta cualquier origen: localhost, Cloudflare tunnel, etc.
+      - CORS_ORIGIN=*
       - SEED_DB=true
     depends_on:
       db:
@@ -122,6 +127,20 @@ services:
       - sas-network
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+
+  # ---------------------------------------------------------------------------
+  # Cloudflare Tunnel — Expone nginx:80 al exterior sin cuenta ni token
+  # URL pública generada automáticamente en: docker compose logs cloudflared
+  # Buscar la línea con "trycloudflare.com"
+  # ---------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://nginx:80
+    depends_on:
+      - nginx
+    networks:
+      - sas-network
 
 # -----------------------------------------------------------------------------
 volumes:

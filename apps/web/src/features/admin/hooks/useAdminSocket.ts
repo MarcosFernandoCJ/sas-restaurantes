@@ -4,7 +4,6 @@ import { useAdminAuthStore } from '../store/admin-auth.store'
 import { useAdminDashboardStore } from '../store/admin-dashboard.store'
 import type { StockAlertPayload, KpiToday } from '../types'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
 interface OrderConfirmedPayload {
   orderId: string
@@ -20,7 +19,7 @@ export function useAdminSocket() {
   useEffect(() => {
     if (!token) return
 
-    const socket = io(SOCKET_URL, {
+    const socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       auth: { token },

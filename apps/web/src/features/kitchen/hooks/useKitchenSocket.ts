@@ -12,7 +12,6 @@ import type {
   JourneyEndedPayload,
 } from '../types'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 const REMOVAL_DELAY_MS = 3000
 
 function payloadToOrder(payload: OrderCreatedPayload): KitchenOrder {
@@ -50,7 +49,7 @@ export function useKitchenSocket() {
   // Initial load: fetch active queue via HTTP (kitchen has no JWT).
   // cache: 'no-store' bypasses service worker cache so restarts always get fresh DB state.
   useEffect(() => {
-    fetch(`${SOCKET_URL}/kitchen/queue`, { cache: 'no-store' })
+    fetch(`${import.meta.env.VITE_API_URL ?? '/api'}/kitchen/queue`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data: OrderCreatedPayload[]) => setOrders(data.map(payloadToOrder)))
       .catch(() => { /* silent — queue starts empty if API unreachable */ })
@@ -58,7 +57,7 @@ export function useKitchenSocket() {
 
   // WebSocket connection — single instance, proper cleanup on unmount
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
+    const socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnectionDelay: 1000,

@@ -6,12 +6,13 @@
 
 ## 🧭 Contexto del Proyecto
 
-Sistema de gestión para pollerías / restaurantes. Tres interfaces conectadas en tiempo real:
-- **Cocina**: cola de pedidos para cocineros (pantalla grande, dark mode)
-- **Mesero**: toma de pedidos y pagos desde tableta (PWA instalable)
-- **Admin**: panel de gestión, analítica e inventario (desktop)
+Sistema de gestión para pollerías / restaurantes. **Cuatro interfaces** conectadas en tiempo real:
+- **Cocina**: cola de ítems `kitchen`, pantalla grande, dark mode
+- **Bar**: cola de ítems `bar`, misma lógica que cocina, área separada
+- **Mesero**: toma de pedidos y registro de cobros desde tableta (PWA instalable)
+- **Admin**: panel de gestión, jornadas y analítica (desktop)
 
-MVP actual. Sin multitenancy todavía. Una sola sucursal.
+MVP actual. Sin multitenancy. Una sola sucursal.
 
 ---
 
@@ -29,6 +30,9 @@ MVP actual. Sin multitenancy todavía. Una sola sucursal.
 │   ├── docker/       ← Dockerfiles por servicio
 │   └── nginx/        ← nginx.conf
 ├── scripts/          ← Seeds, migraciones manuales, utilidades
+├── docs/
+│   ├── ARCHITECTURE.md ← Arquitectura detallada y flujos
+│   └── SESSIONS.md     ← Plan de sesiones de desarrollo
 ├── docker-compose.yml
 ├── docker-compose.dev.yml
 ├── pnpm-workspace.yaml
@@ -65,7 +69,7 @@ MVP actual. Sin multitenancy todavía. Una sola sucursal.
 | PostgreSQL | 16 | Base de datos principal |
 | Redis | 7 | Sesiones, pub/sub, BullMQ |
 | Socket.io | 4 | WebSocket server |
-| BullMQ | 5 | Cola de jobs async |
+| BullMQ | 5 | Cola de jobs async (recordatorios de recojo) |
 | JWT (jsonwebtoken) | 9 | Auth tokens |
 | bcrypt | 5 | Hash de contraseñas |
 | Zod | 3 | Validación de request body |
@@ -88,15 +92,21 @@ MVP actual. Sin multitenancy todavía. Una sola sucursal.
 
 ### Enums críticos (nunca cambiar los valores string en producción)
 ```prisma
-enum UserRole        { admin waiter chef }
-enum TableStatus     { free occupied reserved }
-enum WaiterMode      { free assigned }
-enum OrderType       { dine_in delivery }
-enum OrderStatus     { pending in_prep ready delivered cancelled }
-enum ItemStatus      { pending in_prep ready served }
-enum InvoiceStatus   { pending paid voided }
-enum PaymentMethod   { cash card yape plin other }
+enum UserRole         { admin waiter chef }
+enum TableStatus      { free occupied reserved }
+enum WaiterMode       { free assigned }
+enum OrderType        { dine_in delivery }
+enum OrderStatus      { pending in_prep ready delivered cancelled }
+enum ItemStatus       { pending in_prep ready served }
+enum InvoiceStatus    { pending paid voided }
+enum PaymentMethod    { cash card yape plin other }
 enum IngredientStatus { ok low critical out }
+enum CategoryType     { food drink other }
+enum DispatchArea     { kitchen bar waiter }   ← CENTRAL: determina a qué pantalla va cada ítem
+enum JourneyStatus    { open closed }
+enum SocketEventType  { ORDER_CREATED ADDITIONAL_ORDER_CREATED ITEM_STARTED
+                        ITEM_READY WAITER_NOTIFIED ITEM_DELIVERED
+                        SHIFT_OPENED SHIFT_CLOSED }
 ```
 
 ---
@@ -106,8 +116,8 @@ enum IngredientStatus { ok low critical out }
 - JWT con access token (15 min) + refresh token (8h para turno de mesero)
 - El refresh token se guarda en Redis con key `refresh:{userId}:{tokenId}`
 - Roles: `admin` > `waiter` > `chef`
-- Middleware de rol en Fastify: `fastify.addHook('preHandler', requireRole(['admin']))`
-- La vista de Cocina usa PIN de turno (sin login individual por ahora)
+- Middleware de rol en Fastify: `requireRole(['admin'])` como `preHandler`
+- La vista de Cocina y Bar usan PIN de turno (sin login individual por ahora)
 - Headers: `Authorization: Bearer <token>`
 
 ---
@@ -116,62 +126,110 @@ enum IngredientStatus { ok low critical out }
 
 ### Rooms
 ```
-room:kitchen          → todos los chefs
+room:kitchen          → pantalla de cocina
+room:bar              → pantalla de bar
 room:waiter:{userId}  → mesero específico
 room:admin            → panel admin
 ```
 
 ### Eventos (server → client)
 ```typescript
-'order:created'       // nuevo pedido llega a cocina
-'order:item:claimed'  // cocinero tomó un ítem
-'order:item:ready'    // ítem listo, notifica al mesero
-'order:item:updated'  // mesero editó ítem en preparación
-'order:additional'    // pedido adicional de una mesa
-'stock:alert'         // insumo bajó del umbral mínimo
+'order:created'           // nuevo pedido → kitchen/bar reciben solo sus ítems
+'order:additional'        // pedido adicional de una mesa
+'order:item:claimed'      // chef/barman tomó un ítem (puede incluir autoClaimed: true)
+'order:item:ready'        // ítem listo → sala lo atenúa + mesero recibe notificación push
+'order:ready'             // solo delivery: todos los ítems de producción listos
+'order:delivered'         // todos los ítems served → tarjeta sale de la cola
+'order:item:updated'      // mesero editó notas en preparación → badge ACTUALIZADO
+'table:updated'           // waiter refresca TableDetail (pago, claim, etc.)
+'journey:started'         // jornada abierta por el admin
+'journey:ended'           // jornada cerrada por el admin
+'stock:alert'             // insumo bajó del umbral mínimo → room:admin
 ```
 
 ### Eventos (client → server)
 ```typescript
-'item:claim'          // cocinero reclama un ítem
-'item:ready'          // cocinero marca ítem como listo
-'item:served'         // mesero confirma recojo
+'item:claim'          // chef/barman reclama un ítem
+'item:ready'          // chef/barman marca ítem como listo (auto-claim si estaba pending)
+'item:served'         // mesero confirma recojo → cancela BullMQ reminder
 ```
 
 ---
 
-## 💳 Pagos
+## 🗂️ DispatchArea — Lógica Central
 
-- **Proveedor principal**: Culqi (mercado peruano)
-- **Variables de entorno**: `CULQI_PUBLIC_KEY`, `CULQI_SECRET_KEY`
-- Flujo: frontend crea token Culqi → envía al backend → backend carga con secret key
-- Métodos soportados MVP: `cash` (manual), `card` (Culqi), `yape` (QR Culqi), `plin` (QR)
-- Una factura por confirmación de pedido. Las facturas pagadas son inmutables.
-- Pedidos adicionales = nueva factura separada, nunca modificar la original
+Cada `MenuItem` tiene `dispatchArea` que determina a qué pantalla va el ítem al ordenarse.
+El valor se copia en `OrderItem.assignedArea` al crear el pedido.
+
+| `dispatch_area` | `requires_preparation` | Comportamiento |
+|---|---|---|
+| `kitchen` | `true` | Va a la cola de cocina. Chef lo reclama y prepara. |
+| `bar` | `true` | Va a la cola de bar. Barman lo prepara. |
+| `waiter` | `false` | Sin pantalla de preparación. Mesero lo despacha directamente. |
+
+- El admin configura `dispatchArea` en el Recetario. No se puede cambiar por pedido.
+- Los ítems `waiter` se marcan `ready` automáticamente al crear el pedido.
+
+---
+
+## 💳 Pagos — Registro Manual
+
+**No hay integración con pasarela de pago externa en el MVP.**
+Los pagos son registros manuales realizados por el mesero.
+
+### Dos flujos (la diferencia es solo cuándo se registra el cobro)
+
+**Ambos flujos** despachan el pedido a cocina/bar **inmediatamente** al crearlo:
+
+1. `POST /orders` → crea Order + OrderItems → `dispatchOrderToAreas()` emite a room:kitchen y/o room:bar
+2. `POST /invoices` → crea Invoice con `status = 'pending'`
+3. Pantalla de elección: **"Pagar ahora"** → abre PaymentModal → `POST /invoices/:id/pay`
+                         **"Pagar después"** → vuelve al tablero, badge "Falta pagar" en la mesa
+
+### Registro de pago
+- Métodos: `cash | card | yape | plin | other`
+- Referencia opcional: número de operación, voucher (`payment_reference`)
+- Una factura `paid` es **inmutable**. Nunca modificar.
+- Pedidos adicionales generan una nueva `Invoice` separada.
+
+---
+
+## 📅 JourneySession — Jornada Operativa
+
+Cada día de operación tiene una `JourneySession` abierta por el admin.
+
+- **`POST /orders` requiere jornada abierta** → devuelve 403 si no hay sesión activa.
+- Las métricas (`JourneyMetrics`) se acumulan incrementalmente al completar cada pedido (crash-safe).
+- El admin abre (`SHIFT_OPENED`) y cierra (`SHIFT_CLOSED`) la jornada. Ambos eventos se registran en `SocketEvent`.
+- `journey:started` / `journey:ended` se emiten vía WebSocket a waiter y admin.
 
 ---
 
 ## 🧾 Reglas de Negocio Críticas
 
 ### Pedidos
-1. Un pedido solo entra a la cola de cocina **después de confirmado el pago** (invoice.status = 'paid')
-2. Los pedidos adicionales (`is_additional: true`) tienen `parentOrderId` apuntando al pedido original
-3. Los adicionales aparecen **al final** de la cola de cocina con tag visual "ADICIONAL"
-4. Si un ítem en preparación es editado por el mesero → emitir `order:item:updated` → badge "ACTUALIZADO" en la tarjeta de cocina
-5. Cuando **todos** los `order_items` de un order tienen `status = 'served'` → el `order.status` cambia automáticamente a `'delivered'`
+1. El pedido se despacha a cocina/bar **inmediatamente** al crearse (`POST /orders`), sin depender del estado de pago
+2. Si no hay `JourneySession` abierta, `POST /orders` retorna **403**
+3. Los pedidos adicionales (`is_additional: true`) tienen `parentOrderId` apuntando al original
+4. Los adicionales llegan **al final** de la cola con tag visual "ADICIONAL"
+5. Si el mesero edita notas de un ítem en preparación → emitir `order:item:updated` → badge "ACTUALIZADO" en la tarjeta
+6. Si un chef/barman marca `item:ready` sin haber hecho `item:claim`, el sistema hace **auto-claim** automático
+7. Cuando **todos** los `order_items` tienen `status = 'served'` → `order.status = 'delivered'` automáticamente
+8. Al completar un pedido (`delivered`) → `journeyService.recordDeliveredOrder()` actualiza `JourneyMetrics`
+9. Para **delivery**: `order:ready` se emite al mesero solo cuando todos los ítems de cocina + bar están listos
 
 ### Inventario
-6. Al confirmar una compra (`purchase`), actualizar automáticamente `ingredient.stockQty` sumando lo comprado
-7. El `ingredient.status` se recalcula en cada update: `out` si stock=0, `critical` si stock ≤ minStockQty, `low` si stock ≤ minStockQty * 2, `ok` en otro caso
-8. Al cambiar un status a `critical` o `out`, emitir `stock:alert` al room:admin
+10. Al confirmar una compra (`purchase`), actualizar automáticamente `ingredient.stockQty`
+11. `ingredient.status` se recalcula en cada update: `out` si stock=0, `critical` si stock ≤ minStockQty, `low` si stock ≤ minStockQty × 2, `ok` en otro caso
+12. Al cambiar status a `critical` o `out`, emitir `stock:alert` a room:admin
 
 ### Menú diario
-9. Solo los `menu_items` que aparecen en `daily_menus` para la fecha de hoy están disponibles para tomar pedidos
-10. El admin debe confirmar el menú del día; hasta entonces, el mesero ve "Menú no confirmado"
+13. Solo los `menu_items` en `daily_menus` para la fecha de hoy están disponibles para tomar pedidos
+14. El admin debe confirmar el menú del día; hasta entonces, el mesero ve "Menú no confirmado"
 
 ### Tiempos de preparación
-11. El tiempo estimado de un pedido = `MAX(prep_time_minutes)` de sus ítems (preparación paralela)
-12. Las bebidas simples (sin receta) tienen `prepTimeMinutes = 2` por defecto
+15. El tiempo estimado de un pedido = `MAX(prep_time_minutes)` de sus ítems (preparación paralela)
+16. Los ítems `waiter` (`requires_preparation = false`) tienen `prepTimeMinutes = 0`
 
 ---
 
@@ -202,7 +260,7 @@ apps/web/src/features/kitchen/
 ├── components/           ← componentes de la feature
 │   └── KitchenCard.tsx
 ├── hooks/                ← hooks específicos
-│   └── useKitchenQueue.ts
+│   └── useKitchenSocket.ts
 ├── store/                ← slice de Zustand si aplica
 │   └── kitchen.store.ts
 ├── types.ts              ← tipos locales
@@ -227,10 +285,10 @@ primary:    '#1B2B3A'   // Azul carbón profundo
 secondary:  '#C8410A'   // Rojo brasas
 accent:     '#E8A838'   // Ámbar dorado
 surface:    '#FAFAF8'   // Crema cálida
-dark:       '#0F1A24'   // Fondo cocina dark mode
+dark:       '#0F1A24'   // Fondo cocina/bar dark mode
 ```
 
-Paleta completa en `/packages/ui/src/tokens.ts` — consultar antes de estilar.
+Paleta completa en `packages/ui/src/tokens.ts` — consultar antes de estilar.
 
 ---
 
@@ -275,15 +333,66 @@ docker-compose logs -f api
 
 ---
 
+## 🤖 Estrategia de Skills y MCP
+
+Esta sección define la estructura base para futuros agentes de IA y herramientas MCP
+que extenderán las capacidades del sistema. Es la **fuente de verdad** para planificar
+integraciones de IA. No contiene implementación, solo la arquitectura de módulos.
+
+### Estructura de módulos MCP (futuro)
+
+```
+apps/api/src/mcp/
+├── analytics.mcp.ts       ← Agente de análisis de jornadas y ventas
+│                             Contexto: JourneyMetrics, invoice history, item breakdown
+├── inventory.mcp.ts       ← Agente de gestión de inventario
+│                             Contexto: ingredient status, purchase history, recipes
+├── menu.mcp.ts            ← Agente de recomendaciones de menú
+│                             Contexto: daily_menus, item popularity, ingredient cost
+├── demand.mcp.ts          ← Agente de predicción de demanda
+│                             Contexto: calendar_events, hourly_breakdown histórico
+└── purchasing.mcp.ts      ← Agente de compras y proveedores
+│                             Contexto: ingredient alerts, supplier prices, purchase history
+```
+
+### Skills activas en Claude Code (por tipo de tarea)
+
+| Tarea | Skill | Cuándo activarla |
+|---|---|---|
+| Componentes UI, pantallas, layouts | `frontend-design` | Cualquier componente visual nuevo |
+| Plantillas Excel (recetas, inventario) | `xlsx` | Importación/exportación masiva |
+| Reportes descargables | `pdf` | Lista de compras, cierre de caja |
+| Lectura de archivos del cliente | `file-reading` | Migración de datos iniciales |
+| Manuals de usuario | `docx` | Documentación por rol |
+
+### Convenciones para módulos MCP
+
+- Cada módulo `.mcp.ts` expone herramientas tipadas con Zod
+- El contexto de cada agente se construye leyendo la BD, nunca recibiendo datos del cliente
+- Los agentes son **read-only** por defecto; las escrituras requieren confirmación explícita
+- Naming: `{dominio}.mcp.ts` para el módulo, `{acción}{Dominio}Tool` para cada herramienta
+
+### Prioridad de implementación
+
+1. `analytics.mcp.ts` — usa `JourneyMetrics` ya implementado, bajo esfuerzo, alto valor
+2. `inventory.mcp.ts` — usa datos de stock ya disponibles
+3. `menu.mcp.ts` — requiere historial suficiente de ventas
+4. `demand.mcp.ts` — requiere `calendar_events` y varios meses de `hourly_breakdown`
+5. `purchasing.mcp.ts` — requiere integración con proveedores externos
+
+---
+
 ## 🚫 Restricciones — NUNCA hacer esto
 
 - ❌ Nunca modificar una `invoice` con `status = 'paid'`
-- ❌ Nunca enviar pedidos a cocina antes de confirmar el pago
-- ❌ Nunca hardcodear keys de API (usar variables de entorno)
+- ❌ Nunca bloquear el despacho del pedido esperando el pago (el despacho es siempre inmediato)
+- ❌ Nunca crear un pedido sin verificar que hay una `JourneySession` abierta
+- ❌ Nunca hardcodear keys de API o hexadecimales de color en componentes
 - ❌ Nunca usar `any` en TypeScript sin un comentario `// TODO: tipar`
 - ❌ Nunca borrar datos de inventario; solo marcar `isActive: false`
 - ❌ Nunca usar `console.log` en producción; usar el logger de Fastify (`request.log.info`)
 - ❌ Nunca commits directos a `main`; siempre PR con nombre `feat/`, `fix/`, `chore/`
+- ❌ Nunca cambiar los valores string de los enums en producción
 
 ---
 
@@ -319,5 +428,5 @@ docker-compose up --build
 
 ---
 
-*Última actualización: Sesión 0.1 — Monorepo + Docker*
+*Última actualización: 2026-06-12 — DispatchArea, JourneySession, flujo de pagos manuales, Estrategia MCP*
 *Cualquier decisión de arquitectura que cambie este archivo debe documentarse en el PR correspondiente.*

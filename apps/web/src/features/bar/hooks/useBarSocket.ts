@@ -12,7 +12,6 @@ import type {
   JourneyEndedPayload,
 } from '../types'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 const REMOVAL_DELAY_MS = 3000
 
 function payloadToOrder(payload: OrderCreatedPayload): BarOrder {
@@ -49,14 +48,14 @@ export function useBarSocket() {
 
   // Initial load: fetch active bar queue via HTTP
   useEffect(() => {
-    fetch(`${SOCKET_URL}/bar/queue`, { cache: 'no-store' })
+    fetch(`${import.meta.env.VITE_API_URL ?? '/api'}/bar/queue`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data: OrderCreatedPayload[]) => setOrders(data.map(payloadToOrder)))
       .catch(() => { /* silent — queue starts empty if API unreachable */ })
   }, [setOrders])
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
+    const socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnectionDelay: 1000,

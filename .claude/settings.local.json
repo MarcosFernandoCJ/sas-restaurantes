@@ -10,7 +10,9 @@
       "Bash(where npx *)",
       "PowerShell(docker compose version *)",
       "Bash(apps/api/node_modules/.bin/tsc --project apps/api/tsconfig.json --noEmit)",
-      "Bash(apps/web/node_modules/.bin/tsc --project apps/web/tsconfig.json --noEmit)"
+      "Bash(apps/web/node_modules/.bin/tsc --project apps/web/tsconfig.json --noEmit)",
+      "Bash(awk '{print $2}')",
+      "Bash(nmcli -g IP4.ADDRESS device show)"
     ]
   }
 }

@@ -5,7 +5,6 @@ import { useNotificationsStore } from '../store/notifications.store'
 import { useWaiterJourneyStore } from '../store/journey.store'
 import type { ItemReadyNotification } from '../types'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
 
 interface ItemReadyPayload {
   itemId: string
@@ -44,7 +43,7 @@ export function useWaiterSocket(onTableUpdated?: (payload: TableUpdatedPayload) 
   // Fetch current journey state on mount (so we know if local is open/closed without waiting for a WS event)
   useEffect(() => {
     if (!token) return
-    fetch(`${SOCKET_URL}/journey/current`, {
+    fetch(`${import.meta.env.VITE_API_URL ?? '/api'}/journey/current`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -65,7 +64,7 @@ export function useWaiterSocket(onTableUpdated?: (payload: TableUpdatedPayload) 
   useEffect(() => {
     if (!token) return
 
-    const socket = io(SOCKET_URL, {
+    const socket = io({
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       auth: { token },
